@@ -108,11 +108,14 @@ Report the copy you obtained with `DownloadResult.quality`
 (`CopyQuality.FINAL`, `PREPRINT`, or `OTHER`) so a final PDF is preferred over a
 draft, a Word file, or plain text.
 
-**Browser-gated sources.** JSTOR and Project MUSE fingerprint and block
-non-browser HTTP clients, so their search skips unless `ctx.browser` is set. A
-real stealth browser session (and the JSTOR/MUSE authenticated download that
-depends on it) is not yet wired up — it is the main outstanding work for
-login-required, non-open-access sources.
+**Paywalled sources (institutional login).** `snaffle download "Name"
+--institution BIRKBECK` (or `MSU`) opens a real Chrome window at the
+institution's EZProxy; you sign in and approve any SSO/Okta push once. Once the
+EZProxy session cookie appears, the `institutional` plugin harvests paywalled
+works: it routes each DOI through EZProxy, reads the publisher's
+`citation_pdf_url` meta tag (present on JSTOR, Project MUSE, Taylor & Francis,
+OUP, De Gruyter, …) and downloads the PDF through the authenticated session.
+This is publisher-agnostic; no per-publisher scraping is required.
 
 ## The `Publication` model
 
