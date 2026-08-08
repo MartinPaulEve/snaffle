@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from snaffle.fetch import fetch_document, looks_like_pdf
 from snaffle.matching import parse_name
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin
@@ -92,14 +93,6 @@ def select_candidates(results: list[dict], pub: Publication) -> list[dict]:
     return candidates
 
 
-def _extension_for(url: str, content_type: str) -> str:
-    if "pdf" in content_type or url.lower().endswith(".pdf"):
-        return "pdf"
-    if "msword" in content_type or url.lower().endswith((".doc", ".docx")):
-        return "docx"
-    return "pdf"
-
-
 class DiscoveryPlugin(Plugin, DownloadCapability):
     name = "discovery"
     description = "Full-text discovery via Kagi web search"
@@ -109,33 +102,21 @@ class DiscoveryPlugin(Plugin, DownloadCapability):
         return bool(self.ctx.kagi) and bool(publication.title)
 
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
-        candidates: list[dict] = []
-        seen = set()
+        # Try one query at a time and stop at the first working copy, so a work
+        # that is found early does not spend Kagi credits on the other variants.
+        seen: set[str] = set()
+        last_error = "no full-text copy discovered"
         for query in build_queries(publication):
             for cand in select_candidates(self.ctx.kagi.search(query), publication):
-                if cand["url"] not in seen:
-                    seen.add(cand["url"])
-                    candidates.append(cand)
-
-        last_error = "no full-text copy discovered"
-        for cand in candidates:
-            try:
-                response = self.ctx.http.get(cand["url"])
-            except Exception as exc:  # noqa: BLE001
-                last_error = str(exc)
-                continue
-            if response.status_code != 200 or not response.content:
-                last_error = f"HTTP {response.status_code}"
-                continue
-            content_type = response.headers.get("content-type", "")
-            is_pdf = "pdf" in content_type or response.content[:5].startswith(b"%PDF")
-            if not is_pdf:
-                last_error = "candidate was not a downloadable document"
-                continue
-            ext = _extension_for(cand["url"], content_type)
-            target = dest.with_suffix("." + ext)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(response.content)
-            return DownloadResult(success=True, path=target, quality=cand["quality"])
-
+                if cand["url"] in seen:
+                    continue
+                seen.add(cand["url"])
+                data = fetch_document(self.ctx.http, cand["url"])
+                if not data or not looks_like_pdf(data):
+                    last_error = "candidate was not a PDF"
+                    continue
+                target = dest.with_suffix(".pdf")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                return DownloadResult(success=True, path=target, quality=cand["quality"])
         return DownloadResult(success=False, error=last_error)

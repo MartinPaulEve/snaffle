@@ -91,6 +91,26 @@ def test_download_fetches_first_working_pdf(tmp_path):
     assert result.path.read_bytes().startswith(b"%PDF")
 
 
+def test_download_stops_querying_kagi_after_first_success(tmp_path):
+    # Conserve Kagi credits: once a query yields a working copy, don't run the
+    # remaining query variants.
+    calls = {"n": 0}
+    eprint = "https://eprints.bbk.ac.uk/1/x.pdf"
+
+    def kagi_handler(request):
+        calls["n"] += 1
+        row = {"url": eprint, "title": "", "snippet": ""}
+        return httpx.Response(200, json={"data": {"search": [row]}})
+
+    def fetch_handler(request):
+        return httpx.Response(200, content=b"%PDF-1.5", headers={"content-type": "application/pdf"})
+
+    plugin = DiscoveryPlugin(_ctx(kagi_handler, fetch_handler))
+    result = plugin.download(a_pub(), tmp_path / "o.pdf")
+    assert result.success is True
+    assert calls["n"] == 1
+
+
 def test_download_reports_failure_when_nothing_downloadable(tmp_path):
     plugin = DiscoveryPlugin(
         _ctx(lambda r: httpx.Response(200, json={"data": []}),
