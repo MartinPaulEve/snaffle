@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 from snaffle.models import Publication
@@ -59,3 +60,12 @@ def ensure_author_dir(output_dir: Path, author: str) -> Path:
     path = Path(output_dir) / sanitize_component(author)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def nuke_author_dir(output_dir: Path, author: str) -> bool:
+    """Delete the academic's output directory. True if one existed."""
+    path = Path(output_dir) / sanitize_component(author)
+    if path.is_dir():
+        shutil.rmtree(path)
+        return True
+    return False

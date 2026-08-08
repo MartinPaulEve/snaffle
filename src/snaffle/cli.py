@@ -1,4 +1,9 @@
-"""Click command-line interface for snaffle."""
+"""Click command-line interface for snaffle.
+
+``snaffle "Name"`` runs the whole workflow. ``snaffle search "Name"`` builds the
+publication list only; ``snaffle download "Name"`` fetches full text for a list
+built earlier. ``--nuke`` wipes the academic's directory first.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ import httpx
 
 from snaffle.banner import print_banner
 from snaffle.config import openalex_excludes, parse_credentials, plugin_dirs
+from snaffle.output import nuke_author_dir
 from snaffle.registry import (
     discover_plugin_classes,
     download_plugins,
@@ -77,59 +83,129 @@ def _configure_logging():
     return logger
 
 
-@click.command()
-@click.argument("academic", required=False)
-@click.option("--output", "-o", default="output", help="Output directory.")
-@click.option("--only", multiple=True, help="Use only these plugins (by name).")
-@click.option("--disable", multiple=True, help="Disable these plugins (by name).")
-@click.option("--style", default="chicago", help="Citation style for the bibliography.")
-@click.option(
-    "--orcid",
-    default=None,
-    help="Override the discovered ORCID iD (use when name resolution is ambiguous).",
-)
-@click.option("--list-plugins", is_flag=True, help="List available plugins and exit.")
-@click.option("--no-download", is_flag=True, help="Search only; do not download.")
-def main(academic, output, only, disable, style, orcid, list_plugins, no_download):
-    """Assemble an archive of an ACADEMIC's published outputs."""
+class DefaultGroup(click.Group):
+    """A group that dispatches an unrecognised first argument to a default command.
+
+    This is what lets ``snaffle "Martin Paul Eve"`` mean ``snaffle run
+    "Martin Paul Eve"`` while ``snaffle search "..."`` still works.
+    """
+
+    default_command = "run"
+
+    def parse_args(self, ctx, args):
+        if args and args[0] not in self.commands and args[0] not in ("--help", "-h"):
+            args = [self.default_command, *args]
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=DefaultGroup, invoke_without_command=True)
+@click.pass_context
+def main(ctx):
+    """Assemble an archive of an academic's published outputs."""
     print_banner(stream=sys.stderr)
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+def _shared_options(func):
+    func = click.argument("academic")(func)
+    func = click.option("--output", "-o", default="output", help="Output directory.")(func)
+    func = click.option("--only", multiple=True, help="Use only these plugins (by name).")(func)
+    func = click.option("--disable", multiple=True, help="Disable these plugins (by name).")(func)
+    func = click.option(
+        "--nuke",
+        is_flag=True,
+        help="Delete the academic's existing output directory before starting.",
+    )(func)
+    return func
+
+
+def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search, do_download):
+    from snaffle import manifest, pipeline
+
     env = dict(os.environ)
     ctx = build_context(env, orcid_override=orcid)
     plugins = load_plugins(ctx, env, only, disable)
-
-    if list_plugins:
-        for p in sorted(plugins, key=lambda p: p.name):
-            caps = []
-            from snaffle.plugins.base import is_download_plugin, is_search_plugin
-
-            if is_search_plugin(p):
-                caps.append("search")
-            if is_download_plugin(p):
-                caps.append("download")
-            click.echo(f"{p.name:<16} [{', '.join(caps)}]  {p.description}")
-        return
-
-    if not academic:
-        raise click.UsageError("Provide an ACADEMIC name, or use --list-plugins.")
-
     logger = _configure_logging()
-    from snaffle.pipeline import run
+    out = Path(output)
 
-    report = run(
-        academic,
-        Path(output),
-        search_plugins(plugins),
-        download_plugins(plugins),
-        logger=logger,
-        style=style,
-        download=not no_download,
-    )
+    # For download-only, read the saved list before any --nuke wipes it.
+    saved = None
+    if do_download and not do_search:
+        saved = manifest.read_manifest(out, academic)
+        if saved is None:
+            raise click.UsageError(
+                f"No saved publication list for '{academic}'. "
+                f'Run: snaffle search "{academic}"'
+            )
+
+    if nuke:
+        removed = nuke_author_dir(out, academic)
+        logger.info("nuke: %s", "removed existing directory" if removed else "nothing to remove")
+
+    if do_search and do_download:
+        report = pipeline.run(
+            academic, out, search_plugins(plugins), download_plugins(plugins),
+            logger=logger, style=style,
+        )
+    elif do_search:
+        report = pipeline.search_phase(
+            academic, out, search_plugins(plugins), logger=logger, style=style
+        )
+    else:
+        report = pipeline.download_phase(
+            academic, out, download_plugins(plugins), saved, logger=logger
+        )
+        # Restore the manifest so the list survives a --nuke.
+        manifest.write_manifest(out, academic, saved)
+
     logger.info(
         "done: %d found, %d downloaded, %d failed",
         len(report.found),
         len(report.downloaded),
         len(report.failed),
     )
+
+
+@main.command(help="Search for and download an academic's works (the full workflow).")
+@_shared_options
+@click.option("--style", default="chicago", help="Citation style for the bibliography.")
+@click.option("--orcid", default=None, help="Override the discovered ORCID iD.")
+def run(academic, output, only, disable, nuke, style, orcid):
+    _run_activity(academic, output, only, disable, nuke, style, orcid,
+                  do_search=True, do_download=True)
+
+
+@main.command(help="Only build the publication list (writes the bibliography; no downloads).")
+@_shared_options
+@click.option("--style", default="chicago", help="Citation style for the bibliography.")
+@click.option("--orcid", default=None, help="Override the discovered ORCID iD.")
+def search(academic, output, only, disable, nuke, style, orcid):
+    _run_activity(academic, output, only, disable, nuke, style, orcid,
+                  do_search=True, do_download=False)
+
+
+@main.command(help="Only download full text for a list built earlier by 'search'.")
+@_shared_options
+def download(academic, output, only, disable, nuke):
+    _run_activity(academic, output, only, disable, nuke, style="chicago", orcid=None,
+                  do_search=False, do_download=True)
+
+
+@main.command(name="list-plugins", help="List available plugins and exit.")
+def list_plugins_cmd():
+    from snaffle.plugins.base import is_download_plugin, is_search_plugin
+
+    env = dict(os.environ)
+    ctx = build_context(env)
+    plugins = load_plugins(ctx, env, (), ())
+    for p in sorted(plugins, key=lambda p: p.name):
+        caps = []
+        if is_search_plugin(p):
+            caps.append("search")
+        if is_download_plugin(p):
+            caps.append("download")
+        click.echo(f"{p.name:<16} [{', '.join(caps)}]  {p.description}")
 
 
 if __name__ == "__main__":

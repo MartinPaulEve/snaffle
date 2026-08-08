@@ -39,14 +39,21 @@ def test_render_banner_no_color_is_plain():
     assert "\x1b[" not in render_banner(color=False)
 
 
-def test_help_shows_usage():
+def test_group_help_lists_the_activities():
     result = CliRunner().invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "search" in result.output
+    assert "download" in result.output
+
+
+def test_run_help_shows_academic_argument():
+    result = CliRunner().invoke(main, ["run", "--help"])
     assert result.exit_code == 0
     assert "ACADEMIC" in result.output
 
 
 def test_list_plugins_lists_known_plugins():
-    result = CliRunner().invoke(main, ["--list-plugins"])
+    result = CliRunner().invoke(main, ["list-plugins"])
     assert result.exit_code == 0
     assert "crossref" in result.output
     assert "arxiv" in result.output
@@ -54,7 +61,7 @@ def test_list_plugins_lists_known_plugins():
 
 def test_banner_painted_to_stderr_not_stdout():
     # Banner goes to stderr so stdout (the plugin list) can be redirected cleanly.
-    result = CliRunner().invoke(main, ["--list-plugins"])
+    result = CliRunner().invoke(main, ["list-plugins"])
     assert result.exit_code == 0
     assert "crossref" in result.stdout
     assert "snaffle" in result.stderr  # banner tagline on stderr

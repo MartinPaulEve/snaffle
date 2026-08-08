@@ -21,19 +21,34 @@ uv sync --extra browser        # omit --extra browser if you don't need Selenium
 ## Usage
 
 ```bash
-# Use every available plugin (the default):
+# The whole workflow — search every source, then download (the default):
 uv run snaffle "Ada Lovelace"
 
-# Only certain plugins, or all-but-some:
-uv run snaffle "Ada Lovelace" --only crossref --only openalex
+# Just build the publication list (writes the bibliography + a saved manifest):
+uv run snaffle search "Ada Lovelace"
+
+# Later, download full text for that saved list, without re-searching:
+uv run snaffle download "Ada Lovelace"
+
+# Only certain plugins, or all-but-some (works on every activity):
+uv run snaffle search "Ada Lovelace" --only crossref --only openalex
 uv run snaffle "Ada Lovelace" --disable jstor
 
-# Build the publication list without downloading anything:
-uv run snaffle "Ada Lovelace" --no-download
+# Start fresh — delete the academic's existing directory first:
+uv run snaffle "Ada Lovelace" --nuke
 
 # See what's installed:
-uv run snaffle --list-plugins
+uv run snaffle list-plugins
 ```
+
+`search` and `download` are two halves of the default workflow. `search` runs
+all search plugins and writes both `bibliography.html` and a machine-readable
+`publications.json`; `download` reads that manifest and fetches full text, so
+you can rebuild the list without downloading, or re-download without
+re-searching. Re-running `search` rebuilds the list from scratch, while
+`download` updates the directory incrementally (existing files are not
+re-fetched). `--nuke` applies to any activity; on `download` it reads the saved
+list before wiping, so it re-fetches everything cleanly.
 
 The banner and all progress reporting go to **stderr**, so you can redirect the
 run log to a file while keeping stdout clean:
@@ -48,6 +63,7 @@ uv run snaffle "Ada Lovelace" 2> run.log
 output/
 └── Ada Lovelace/
     ├── bibliography.html         # every work found, formatted + COinS for Zotero
+    ├── publications.json         # machine-readable list (feeds `snaffle download`)
     ├── failures.txt              # works whose full text could not be retrieved
     ├── 2026/
     │   └── Ada Lovelace - Journal of Software - 2026 - On the Origin of Testing.pdf

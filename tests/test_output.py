@@ -4,6 +4,8 @@ from snaffle.models import Publication
 from snaffle.output import (
     already_downloaded,
     build_filename,
+    ensure_author_dir,
+    nuke_author_dir,
     publication_path,
     sanitize_component,
 )
@@ -60,3 +62,19 @@ def test_already_downloaded_true_for_other_extension(tmp_path: Path):
 def test_already_downloaded_false_when_absent(tmp_path: Path):
     pub = Publication(title="Missing", venue="V", year=2000)
     assert already_downloaded(tmp_path, "Ada Lovelace", pub) is False
+
+
+def test_nuke_removes_existing_author_dir(tmp_path: Path):
+    author_dir = ensure_author_dir(tmp_path, "Ada Lovelace")
+    (author_dir / "2020").mkdir()
+    (author_dir / "2020" / "paper.pdf").write_bytes(b"%PDF")
+    # A sibling academic must be untouched.
+    other = ensure_author_dir(tmp_path, "Charles Babbage")
+
+    assert nuke_author_dir(tmp_path, "Ada Lovelace") is True
+    assert not author_dir.exists()
+    assert other.exists()
+
+
+def test_nuke_absent_returns_false(tmp_path: Path):
+    assert nuke_author_dir(tmp_path, "Nobody") is False

@@ -1,8 +1,18 @@
 from pathlib import Path
 
+import pytest
+
+from snaffle.manifest import read_manifest, write_manifest
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.output import publication_path
-from snaffle.pipeline import download_one, run, run_search
+from snaffle.pipeline import (
+    download_from_manifest,
+    download_one,
+    download_phase,
+    run,
+    run_search,
+    search_phase,
+)
 
 
 class FakeSearch:
@@ -155,3 +165,37 @@ def test_run_writes_bibliography_and_failure_report(tmp_path: Path):
     failures = (author_dir / "failures.txt").read_text(encoding="utf-8")
     assert "Missing" in failures
     assert "Found" not in failures
+
+
+def test_search_phase_writes_manifest_and_bibliography_without_downloading(tmp_path: Path):
+    pub = Publication(title="A Work", venue="V", year=2026, authors=["Ada Lovelace"])
+    report = search_phase("Ada Lovelace", tmp_path, [FakeSearch("s", [pub])])
+
+    author_dir = tmp_path / "Ada Lovelace"
+    assert (author_dir / "bibliography.html").exists()
+    saved = read_manifest(tmp_path, "Ada Lovelace")
+    assert [p.title for p in saved] == ["A Work"]
+    # A pure search neither downloads nor writes a failure report.
+    assert report.downloaded == []
+    assert not (author_dir / "failures.txt").exists()
+
+
+def test_download_phase_downloads_the_supplied_list(tmp_path: Path):
+    pub = Publication(title="A Work", venue="V", year=2026)
+    dl = RecordingDownloader("d", priority=10, succeeds=True)
+    report = download_phase("Ada Lovelace", tmp_path, [dl], [pub])
+    assert dl.calls == 1
+    assert [p.title for p in report.downloaded] == ["A Work"]
+
+
+def test_download_from_manifest_reads_saved_list(tmp_path: Path):
+    pub = Publication(title="Saved Work", venue="V", year=2026)
+    write_manifest(tmp_path, "Ada Lovelace", [pub])
+    dl = RecordingDownloader("d", priority=10, succeeds=True)
+    report = download_from_manifest("Ada Lovelace", tmp_path, [dl])
+    assert [p.title for p in report.downloaded] == ["Saved Work"]
+
+
+def test_download_from_manifest_errors_without_a_manifest(tmp_path: Path):
+    with pytest.raises(FileNotFoundError):
+        download_from_manifest("Never Searched", tmp_path, [])

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from snaffle.bibliography import write_bibliography, write_failures
 from snaffle.dedupe import deduplicate
+from snaffle.manifest import read_manifest, write_manifest
 from snaffle.matching import author_matches
 from snaffle.models import DownloadResult, Publication
 from snaffle.output import already_downloaded, publication_path
@@ -85,6 +86,69 @@ def download_one(
     return DownloadResult(success=False, error=last_error)
 
 
+def search_phase(
+    academic: str,
+    output_dir: Path,
+    search_plugins: list,
+    logger=None,
+    style: str = "chicago",
+) -> RunReport:
+    """Run every search plugin, then persist the list and the bibliography.
+
+    This is the search half of the workflow: it writes the machine-readable
+    manifest (so ``download`` can run later on its own) and the human-readable
+    bibliography, but downloads nothing.
+    """
+    output_dir = Path(output_dir)
+    report = RunReport(author=academic)
+    report.found = run_search(search_plugins, academic, logger)
+    _log(logger, logging.INFO, f"{len(report.found)} unique publication(s) after dedupe")
+    write_manifest(output_dir, academic, report.found)
+    write_bibliography(output_dir, academic, report.found, style)
+    return report
+
+
+def download_phase(
+    academic: str,
+    output_dir: Path,
+    download_plugins: list,
+    pubs: list[Publication],
+    logger=None,
+) -> RunReport:
+    """Download full text for the supplied publication list, incrementally."""
+    output_dir = Path(output_dir)
+    report = RunReport(author=academic, found=list(pubs))
+    for pub in pubs:
+        if already_downloaded(output_dir, academic, pub):
+            _log(logger, logging.INFO, f"already have '{pub.title}', skipping")
+            report.downloaded.append(pub)
+            continue
+        result = download_one(download_plugins, pub, output_dir, academic, logger)
+        if result.success:
+            report.downloaded.append(pub)
+        else:
+            _log(logger, logging.WARNING, f"could not retrieve '{pub.title}': {result.error}")
+            report.failed.append(pub)
+    write_failures(output_dir, academic, report.failed)
+    return report
+
+
+def download_from_manifest(
+    academic: str,
+    output_dir: Path,
+    download_plugins: list,
+    logger=None,
+) -> RunReport:
+    """Download using a previously-saved search manifest.
+
+    Raises ``FileNotFoundError`` if no manifest exists (search never ran).
+    """
+    pubs = read_manifest(output_dir, academic)
+    if pubs is None:
+        raise FileNotFoundError(f"no saved publication list for '{academic}'")
+    return download_phase(academic, output_dir, download_plugins, pubs, logger)
+
+
 def run(
     academic: str,
     output_dir: Path,
@@ -94,25 +158,12 @@ def run(
     style: str = "chicago",
     download: bool = True,
 ) -> RunReport:
-    """Full pipeline: fresh search each run, incremental download."""
-    output_dir = Path(output_dir)
-    report = RunReport(author=academic)
-    report.found = run_search(search_plugins, academic, logger)
-    _log(logger, logging.INFO, f"{len(report.found)} unique publication(s) after dedupe")
-
+    """Full pipeline: fresh search each run, then incremental download."""
+    report = search_phase(academic, output_dir, search_plugins, logger, style)
     if download:
-        for pub in report.found:
-            if already_downloaded(output_dir, academic, pub):
-                _log(logger, logging.INFO, f"already have '{pub.title}', skipping")
-                report.downloaded.append(pub)
-                continue
-            result = download_one(download_plugins, pub, output_dir, academic, logger)
-            if result.success:
-                report.downloaded.append(pub)
-            else:
-                _log(logger, logging.WARNING, f"could not retrieve '{pub.title}': {result.error}")
-                report.failed.append(pub)
-
-    write_bibliography(output_dir, academic, report.found, style)
-    write_failures(output_dir, academic, report.failed)
+        downloaded = download_phase(
+            academic, output_dir, download_plugins, report.found, logger
+        )
+        report.downloaded = downloaded.downloaded
+        report.failed = downloaded.failed
     return report
