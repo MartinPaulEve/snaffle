@@ -9,6 +9,7 @@ from snaffle.pipeline import (
     download_from_manifest,
     download_one,
     download_phase,
+    prune,
     run,
     run_search,
     search_phase,
@@ -167,6 +168,18 @@ def test_run_writes_bibliography_and_failure_report(tmp_path: Path):
     assert "Found" not in failures
 
 
+def test_search_phase_applies_exclusions(tmp_path: Path):
+    author = ["Ada Lovelace"]
+    keep = Publication(title="Real Article", venue="Journal", year=2020, authors=author)
+    drop = Publication(title="A Blog Post", publisher="Front Matter", year=2020, authors=author)
+    report = search_phase(
+        "Ada Lovelace", tmp_path, [FakeSearch("s", [keep, drop])], exclude=["front matter"]
+    )
+    assert [p.title for p in report.found] == ["Real Article"]
+    saved = read_manifest(tmp_path, "Ada Lovelace")
+    assert [p.title for p in saved] == ["Real Article"]
+
+
 def test_search_phase_writes_manifest_and_bibliography_without_downloading(tmp_path: Path):
     pub = Publication(title="A Work", venue="V", year=2026, authors=["Ada Lovelace"])
     report = search_phase("Ada Lovelace", tmp_path, [FakeSearch("s", [pub])])
@@ -207,3 +220,28 @@ def test_download_from_manifest_reads_saved_list(tmp_path: Path):
 def test_download_from_manifest_errors_without_a_manifest(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         download_from_manifest("Never Searched", tmp_path, [])
+
+
+def test_prune_removes_excluded_from_files_and_manifest(tmp_path: Path):
+    keep = Publication(title="Real Article", venue="Journal", year=2020)
+    drop = Publication(title="A Blog Post", publisher="Front Matter", year=2019)
+    # Seed a manifest and a downloaded file for each.
+    write_manifest(tmp_path, "Ada Lovelace", [keep, drop])
+    for pub in (keep, drop):
+        p = publication_path(tmp_path, "Ada Lovelace", pub, "pdf")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"%PDF")
+
+    result = prune("Ada Lovelace", tmp_path, ["front matter"])
+    assert result.removed == ["A Blog Post"]
+
+    saved = read_manifest(tmp_path, "Ada Lovelace")
+    assert [p.title for p in saved] == ["Real Article"]
+    assert publication_path(tmp_path, "Ada Lovelace", keep, "pdf").exists()
+    assert not publication_path(tmp_path, "Ada Lovelace", drop, "pdf").exists()
+    assert (tmp_path / "Ada Lovelace" / "bibliography.html").exists()
+
+
+def test_prune_without_manifest_errors(tmp_path: Path):
+    with pytest.raises(FileNotFoundError):
+        prune("Never Searched", tmp_path, ["front matter"])

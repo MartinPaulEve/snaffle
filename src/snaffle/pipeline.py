@@ -8,10 +8,11 @@ from pathlib import Path
 
 from snaffle.bibliography import write_bibliography, write_failures
 from snaffle.dedupe import deduplicate
+from snaffle.exclude import is_excluded
 from snaffle.manifest import read_manifest, write_manifest
 from snaffle.matching import author_matches
 from snaffle.models import DownloadResult, Publication
-from snaffle.output import already_downloaded, publication_path
+from snaffle.output import already_downloaded, publication_path, remove_publication_files
 
 
 @dataclass
@@ -92,19 +93,60 @@ def search_phase(
     search_plugins: list,
     logger=None,
     style: str = "chicago",
+    exclude: list[str] | None = None,
 ) -> RunReport:
     """Run every search plugin, then persist the list and the bibliography.
 
     This is the search half of the workflow: it writes the machine-readable
     manifest (so ``download`` can run later on its own) and the human-readable
-    bibliography, but downloads nothing.
+    bibliography, but downloads nothing. Publications matching an ``exclude``
+    term are dropped before anything is written.
     """
     output_dir = Path(output_dir)
     report = RunReport(author=academic)
-    report.found = run_search(search_plugins, academic, logger)
-    _log(logger, logging.INFO, f"{len(report.found)} unique publication(s) after dedupe")
+    found = run_search(search_plugins, academic, logger)
+    terms = exclude or []
+    report.found = [p for p in found if not is_excluded(p, terms)]
+    dropped = len(found) - len(report.found)
+    msg = f"{len(report.found)} unique publication(s) after dedupe"
+    if dropped:
+        msg += f" ({dropped} excluded)"
+    _log(logger, logging.INFO, msg)
     write_manifest(output_dir, academic, report.found)
     write_bibliography(output_dir, academic, report.found, style)
+    return report
+
+
+@dataclass
+class PruneReport:
+    author: str
+    removed: list[str] = field(default_factory=list)
+    kept: int = 0
+
+
+def prune(academic: str, output_dir: Path, exclude: list[str], logger=None) -> PruneReport:
+    """Remove already-saved publications matching the exclusion terms.
+
+    Deletes their downloaded files and rewrites the manifest, bibliography and
+    failure report. Raises ``FileNotFoundError`` if no manifest exists.
+    """
+    output_dir = Path(output_dir)
+    pubs = read_manifest(output_dir, academic)
+    if pubs is None:
+        raise FileNotFoundError(f"no saved publication list for '{academic}'")
+
+    kept, report = [], PruneReport(author=academic)
+    for pub in pubs:
+        if is_excluded(pub, exclude):
+            remove_publication_files(output_dir, academic, pub)
+            report.removed.append(pub.title)
+            _log(logger, logging.INFO, f"pruned '{pub.title}'")
+        else:
+            kept.append(pub)
+    report.kept = len(kept)
+    write_manifest(output_dir, academic, kept)
+    write_bibliography(output_dir, academic, kept, "chicago")
+    write_failures(output_dir, academic, [])
     return report
 
 
@@ -157,9 +199,10 @@ def run(
     logger=None,
     style: str = "chicago",
     download: bool = True,
+    exclude: list[str] | None = None,
 ) -> RunReport:
     """Full pipeline: fresh search each run, then incremental download."""
-    report = search_phase(academic, output_dir, search_plugins, logger, style)
+    report = search_phase(academic, output_dir, search_plugins, logger, style, exclude)
     if download:
         downloaded = download_phase(
             academic, output_dir, download_plugins, report.found, logger

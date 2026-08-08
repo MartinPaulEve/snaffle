@@ -23,7 +23,21 @@ def offline(monkeypatch):
     monkeypatch.setattr(pipeline, "run", recorder("run"))
     monkeypatch.setattr(pipeline, "search_phase", recorder("search"))
     monkeypatch.setattr(pipeline, "download_phase", recorder("download"))
+
+    def prune_rec(academic, output_dir, exclude, logger=None):
+        calls.append(("prune", tuple(exclude)))
+        return pipeline.PruneReport(academic)
+
+    monkeypatch.setattr(pipeline, "prune", prune_rec)
     return calls
+
+
+def test_prune_subcommand_passes_exclusions(offline):
+    result = CliRunner().invoke(
+        main, ["prune", "Ada Lovelace", "--exclude", "Front Matter", "--exclude", "unknown"]
+    )
+    assert result.exit_code == 0, result.output
+    assert offline == [("prune", ("front matter", "unknown"))]
 
 
 def test_bare_invocation_runs_full_workflow(offline):

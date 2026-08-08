@@ -17,6 +17,7 @@ import httpx
 
 from snaffle.banner import print_banner
 from snaffle.config import load_env_file, openalex_excludes, parse_credentials, plugin_dirs
+from snaffle.exclude import parse_exclusions
 from snaffle.output import nuke_author_dir
 from snaffle.registry import (
     discover_plugin_classes,
@@ -129,7 +130,15 @@ def _shared_options(func):
     return func
 
 
-def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search, do_download):
+def _exclusions(env, cli_exclude) -> list[str]:
+    """Combine SNAFFLE_EXCLUDE terms with any --exclude terms (lowercased)."""
+    terms = parse_exclusions(env)
+    terms.extend(t.strip().lower() for t in cli_exclude if t.strip())
+    return list(dict.fromkeys(terms))
+
+
+def _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
+                  do_search, do_download):
     from snaffle import manifest, pipeline
 
     env = _environment()
@@ -137,6 +146,7 @@ def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search
     plugins = load_plugins(ctx, env, only, disable)
     logger = _configure_logging()
     out = Path(output)
+    exclude_terms = _exclusions(env, exclude)
 
     # For download-only, read the saved list before any --nuke wipes it.
     saved = None
@@ -155,11 +165,12 @@ def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search
     if do_search and do_download:
         report = pipeline.run(
             academic, out, search_plugins(plugins), download_plugins(plugins),
-            logger=logger, style=style,
+            logger=logger, style=style, exclude=exclude_terms,
         )
     elif do_search:
         report = pipeline.search_phase(
-            academic, out, search_plugins(plugins), logger=logger, style=style
+            academic, out, search_plugins(plugins), logger=logger, style=style,
+            exclude=exclude_terms,
         )
     else:
         report = pipeline.download_phase(
@@ -176,12 +187,21 @@ def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search
     )
 
 
+_exclude_option = click.option(
+    "--exclude",
+    multiple=True,
+    help="Drop works whose venue/publisher/URL matches (or 'unknown'). "
+    "Adds to SNAFFLE_EXCLUDE.",
+)
+
+
 @main.command(help="Search for and download an academic's works (the full workflow).")
 @_shared_options
 @click.option("--style", default="chicago", help="Citation style for the bibliography.")
 @click.option("--orcid", default=None, help="Override the discovered ORCID iD.")
-def run(academic, output, only, disable, nuke, style, orcid):
-    _run_activity(academic, output, only, disable, nuke, style, orcid,
+@_exclude_option
+def run(academic, output, only, disable, nuke, style, orcid, exclude):
+    _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
                   do_search=True, do_download=True)
 
 
@@ -189,8 +209,9 @@ def run(academic, output, only, disable, nuke, style, orcid):
 @_shared_options
 @click.option("--style", default="chicago", help="Citation style for the bibliography.")
 @click.option("--orcid", default=None, help="Override the discovered ORCID iD.")
-def search(academic, output, only, disable, nuke, style, orcid):
-    _run_activity(academic, output, only, disable, nuke, style, orcid,
+@_exclude_option
+def search(academic, output, only, disable, nuke, style, orcid, exclude):
+    _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
                   do_search=True, do_download=False)
 
 
@@ -198,7 +219,29 @@ def search(academic, output, only, disable, nuke, style, orcid):
 @_shared_options
 def download(academic, output, only, disable, nuke):
     _run_activity(academic, output, only, disable, nuke, style="chicago", orcid=None,
-                  do_search=False, do_download=True)
+                  exclude=(), do_search=False, do_download=True)
+
+
+@main.command(help="Remove already-saved works matching the exclusions (files + manifest).")
+@click.argument("academic")
+@click.option("--output", "-o", default="output", help="Output directory.")
+@_exclude_option
+def prune(academic, output, exclude):
+    from snaffle import pipeline
+
+    env = _environment()
+    logger = _configure_logging()
+    terms = _exclusions(env, exclude)
+    if not terms:
+        raise click.UsageError(
+            "No exclusions given. Set SNAFFLE_EXCLUDE or pass --exclude "
+            '(e.g. --exclude "Front Matter" --exclude unknown).'
+        )
+    try:
+        report = pipeline.prune(academic, Path(output), terms, logger=logger)
+    except FileNotFoundError as exc:
+        raise click.UsageError(str(exc)) from exc
+    logger.info("pruned %d work(s); %d remain", len(report.removed), report.kept)
 
 
 @main.command(name="list-plugins", help="List available plugins and exit.")

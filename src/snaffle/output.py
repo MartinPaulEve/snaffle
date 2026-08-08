@@ -62,6 +62,23 @@ def ensure_author_dir(output_dir: Path, author: str) -> Path:
     return path
 
 
+def remove_publication_files(output_dir: Path, author: str, pub: Publication) -> int:
+    """Delete any downloaded copies of a publication. Returns how many were removed."""
+    year_dir = _year_dir(output_dir, author, pub)
+    if not year_dir.is_dir():
+        return 0
+    stem = build_filename(pub, author, "x").rsplit(".", 1)[0]
+    removed = 0
+    for f in year_dir.iterdir():
+        if f.is_file() and f.stem == stem:
+            f.unlink()
+            removed += 1
+    # Drop the year folder if pruning emptied it.
+    if not any(year_dir.iterdir()):
+        year_dir.rmdir()
+    return removed
+
+
 def nuke_author_dir(output_dir: Path, author: str) -> bool:
     """Delete the academic's output directory. True if one existed."""
     path = Path(output_dir) / sanitize_component(author)

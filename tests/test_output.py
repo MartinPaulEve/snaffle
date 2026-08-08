@@ -78,3 +78,21 @@ def test_nuke_removes_existing_author_dir(tmp_path: Path):
 
 def test_nuke_absent_returns_false(tmp_path: Path):
     assert nuke_author_dir(tmp_path, "Nobody") is False
+
+
+def test_remove_publication_files_deletes_matching_copies(tmp_path: Path):
+    from snaffle.output import remove_publication_files
+
+    pub = Publication(title="On the Origin of Testing", venue="Journal of Software", year=2026)
+    pdf = publication_path(tmp_path, "Ada Lovelace", pub, "pdf")
+    pdf.parent.mkdir(parents=True)
+    pdf.write_bytes(b"%PDF")
+    # A different extension for the same work should also go.
+    pdf.with_suffix(".docx").write_bytes(b"doc")
+    # An unrelated file in the same year stays.
+    (pdf.parent / "Someone Else - X - 2026 - Other.pdf").write_bytes(b"%PDF")
+
+    removed = remove_publication_files(tmp_path, "Ada Lovelace", pub)
+    assert removed == 2
+    assert not pdf.exists()
+    assert (pdf.parent / "Someone Else - X - 2026 - Other.pdf").exists()
