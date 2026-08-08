@@ -158,12 +158,12 @@ def _institutional_login(ctx, institution: str, logger):
     service = BrowserService(headless=False)
     session = service.session()
     # Navigate to a proxied publisher so EZProxy sends the user to institutional login.
-    session.get(build_proxied_url("https://www.tandfonline.com", cred.ezproxy_base))
+    session.get(build_proxied_url("https://www.jstor.org", cred.ezproxy_base))
     logger.info(
         "A browser window has opened. Log into %s and approve any push; waiting…", institution
     )
-    ezproxy_host = cred.ezproxy_base.split("//", 1)[-1].split("/", 1)[0].split(".", 1)[-1]
-    if not session.wait_for_cookie(ezproxy_host.split(".")[0], timeout=300):
+    # EZProxy sets a session cookie named 'ezproxy...' once login completes.
+    if not session.wait_for_cookie("ezproxy", timeout=300):
         logger.warning("did not detect a completed login within 5 minutes; continuing anyway")
     ctx.institutional = InstitutionalHarvester(session, ctx.http, cred.ezproxy_base)
     return service

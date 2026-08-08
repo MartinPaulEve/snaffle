@@ -7,6 +7,7 @@ approve an Okta push once, after which the session is reused to harvest PDFs.
 
 from __future__ import annotations
 
+import os
 import time
 
 DEFAULT_USER_AGENT = (
@@ -107,6 +108,11 @@ class BrowserService:
     def _start(self):
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+
+        # A visible browser needs an X display; default to :0 so the manual
+        # login window actually appears even when launched from a daemon shell.
+        if not self.headless and not os.environ.get("DISPLAY"):
+            os.environ["DISPLAY"] = ":0"
 
         options = Options()
         options.binary_location = CHROME_BINARY

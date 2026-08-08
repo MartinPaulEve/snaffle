@@ -8,13 +8,17 @@ from snaffle.models import Credential
 def build_proxied_url(target_url: str, ezproxy_base: str) -> str:
     """Rewrite ``target_url`` so it is fetched through the institution's EZproxy.
 
-    EZproxy's URL form is ``<base>/login?url=<target>``; once authenticated the
-    proxy rewrites subsequent links, but this entry URL is what we request.
+    EZproxy's entry form is ``<base>/login?url=<target>``. If the configured
+    base already ends with a ``url=`` parameter, the encoded target is appended
+    directly instead of adding a second ``/login?url=``.
     """
     from urllib.parse import quote
 
-    base = ezproxy_base.rstrip("/")
-    return f"{base}/login?url={quote(target_url, safe='')}"
+    base = ezproxy_base.strip()
+    encoded = quote(target_url, safe="")
+    if base.endswith("="):
+        return base + encoded
+    return f"{base.rstrip('/')}/login?url={encoded}"
 
 
 class EZProxySession:

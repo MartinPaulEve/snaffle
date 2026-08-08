@@ -15,6 +15,13 @@ def test_build_proxied_url_rewrites_host():
     url = build_proxied_url("https://www.jstor.org/stable/123", "https://ezproxy.bbk.ac.uk")
     assert "ezproxy.bbk.ac.uk" in url
     assert "jstor.org" in url
+    assert "/login?url=" in url
+
+
+def test_build_proxied_url_when_base_already_has_url_param():
+    # A base ending in 'url=' must not get a second '/login?url='.
+    url = build_proxied_url("https://www.jstor.org/x", "https://ezproxy.msu.edu/login?url=")
+    assert url == "https://ezproxy.msu.edu/login?url=https%3A%2F%2Fwww.jstor.org%2Fx"
 
 
 def test_tor_proxy_url_points_at_socks():

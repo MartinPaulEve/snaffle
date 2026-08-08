@@ -9,6 +9,8 @@ The file is then downloaded with the browser's session cookies.
 
 from __future__ import annotations
 
+from urllib.parse import urljoin, urlparse
+
 from bs4 import BeautifulSoup
 
 from snaffle.fetch import looks_like_pdf
@@ -35,6 +37,9 @@ class InstitutionalHarvester:
     def _proxied(self, url: str) -> str:
         return build_proxied_url(url, self.ezproxy_base)
 
+    def _proxy_host(self) -> str:
+        return urlparse(self.ezproxy_base).netloc
+
     def fetch_pdf_by_doi(self, doi: str) -> bytes | None:
         return self.fetch_pdf(f"https://doi.org/{doi}")
 
@@ -44,12 +49,21 @@ class InstitutionalHarvester:
         pdf_url = extract_citation_pdf_url(self.session.page_source)
         if not pdf_url:
             return None
-        # Download the PDF through EZProxy too, carrying the session cookies.
+
+        # Resolve relative links against the (proxied) article page, and only
+        # add the proxy prefix when the URL is not already going through it.
+        pdf_url = urljoin(self.session.current_url, pdf_url)
+        proxy_host = self._proxy_host()
+        if proxy_host and proxy_host in urlparse(pdf_url).netloc:
+            fetch_url = pdf_url
+        else:
+            fetch_url = self._proxied(pdf_url)
+
         cookies = self.session.cookies()
         headers = {}
         if cookies:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
-        response = self.http.get(self._proxied(pdf_url), headers=headers)
+        response = self.http.get(fetch_url, headers=headers)
         if response.status_code != 200 or not looks_like_pdf(response.content):
             return None
         return response.content
