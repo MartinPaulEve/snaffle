@@ -43,8 +43,12 @@ def _authors_compatible(a: Publication, b: Publication) -> bool:
 def are_duplicates(a: Publication, b: Publication) -> bool:
     """True if two publications describe the same work despite metadata drift."""
     ka, kb = publication_key(a), publication_key(b)
-    if ka and kb:
-        return ka == kb
+    # A shared strong identifier confirms a duplicate. But a *differing* one is
+    # not proof of distinct works — a repository deposit mints its own DOI for a
+    # copy of a published work — so fall through to title matching rather than
+    # rejecting the pair here.
+    if ka and kb and ka == kb:
+        return True
     # Fall back to fuzzy title match, constrained by year when both known.
     if a.year and b.year and a.year != b.year:
         return False

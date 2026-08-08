@@ -46,6 +46,30 @@ def test_not_duplicates_when_titles_differ():
     assert are_duplicates(a, b) is False
 
 
+def test_same_work_with_different_dois_still_merges():
+    # A publisher DOI and a repository-deposit DOI for the same book must merge;
+    # differing DOIs are not proof of different works.
+    publisher = Publication(
+        title="Literature Against Criticism",
+        authors=["Martin Paul Eve"],
+        year=2016,
+        doi="10.11647/obp.0102",
+    )
+    deposit = Publication(
+        title="Literature Against Criticism: University English and Contemporary Fiction",
+        authors=["Eve, Martin Paul"],
+        year=2016,
+        doi="10.17613/M6DW4B",
+    )
+    assert are_duplicates(publisher, deposit) is True
+
+
+def test_different_works_with_different_dois_stay_separate():
+    a = Publication(title="Alpha study", authors=["Ada Lovelace"], year=2016, doi="10.1/a")
+    b = Publication(title="Beta study", authors=["Ada Lovelace"], year=2016, doi="10.1/b")
+    assert are_duplicates(a, b) is False
+
+
 def test_duplicates_across_subtitle_variants():
     # The same book surfaced with and without its subtitle, from sources with
     # compatible authors and the same year — this must merge.
