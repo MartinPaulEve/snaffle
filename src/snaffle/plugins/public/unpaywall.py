@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from snaffle.fetch import fetch_document, looks_like_pdf
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin
 
@@ -68,9 +69,9 @@ class UnpaywallPlugin(Plugin, DownloadCapability):
         pdf_url = extract_oa_pdf_url(meta.json())
         if not pdf_url:
             return DownloadResult(success=False, error="no open-access copy")
-        pdf = self.ctx.http.get(pdf_url)
-        if pdf.status_code != 200 or not pdf.content:
-            return DownloadResult(success=False, error=f"pdf HTTP {pdf.status_code}")
+        data = fetch_document(self.ctx.http, pdf_url)
+        if not data or not looks_like_pdf(data):
+            return DownloadResult(success=False, error="OA link was not a PDF")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(pdf.content)
+        dest.write_bytes(data)
         return DownloadResult(success=True, path=dest, quality=CopyQuality.FINAL)

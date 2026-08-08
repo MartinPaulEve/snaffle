@@ -10,6 +10,7 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
+from snaffle.fetch import fetch_document, looks_like_pdf
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin, SearchCapability
 from snaffle.plugins.public._helpers import first_year
@@ -66,9 +67,9 @@ class ArxivPlugin(Plugin, SearchCapability, DownloadCapability):
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
         if not publication.pdf_url:
             return DownloadResult(success=False, error="no arXiv PDF url")
-        response = self.ctx.http.get(publication.pdf_url)
-        if response.status_code != 200 or not response.content:
-            return DownloadResult(success=False, error=f"HTTP {response.status_code}")
+        data = fetch_document(self.ctx.http, publication.pdf_url)
+        if not data or not looks_like_pdf(data):
+            return DownloadResult(success=False, error="arXiv link was not a PDF")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(response.content)
+        dest.write_bytes(data)
         return DownloadResult(success=True, path=dest, quality=CopyQuality.PREPRINT)

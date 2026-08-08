@@ -88,6 +88,20 @@ def test_unpaywall_422_is_clean_failure(tmp_path):
     assert result.error is not None
 
 
+def test_unpaywall_rejects_html_landing_page(tmp_path):
+    # OA URLs sometimes resolve to an HTML page, not a PDF; that is not a copy.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "api.unpaywall.org" in request.url.host:
+            return httpx.Response(200, json=RESPONSE)
+        return httpx.Response(200, content=b"<!DOCTYPE html><html>landing</html>")
+
+    result = UnpaywallPlugin(_ctx(handler)).download(
+        Publication(title="x", doi="10.1/x"), tmp_path / "out.pdf"
+    )
+    assert result.success is False
+    assert not (tmp_path / "out.pdf").exists()
+
+
 def test_unpaywall_download_fetches_pdf(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if "api.unpaywall.org" in request.url.host:
