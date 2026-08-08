@@ -23,6 +23,7 @@ class ServiceContext:
     browser: Any = None  # snaffle.services.browser.BrowserService
     tor: Any = None  # snaffle.services.tor.TorService
     captcha: Any = None  # snaffle.services.captcha.TwoCaptchaClient
+    kagi: Any = None  # snaffle.services.kagi.KagiClient
     credentials: list = field(default_factory=list)  # list[Credential]
     config: dict = field(default_factory=dict)
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger("snaffle"))

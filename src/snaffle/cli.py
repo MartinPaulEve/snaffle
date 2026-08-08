@@ -20,6 +20,7 @@ from snaffle.registry import (
 )
 from snaffle.secrets import SecretStore
 from snaffle.services import ServiceContext
+from snaffle.services.kagi import KagiClient
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -34,15 +35,27 @@ def build_context(env: dict) -> ServiceContext:
         follow_redirects=True,
         timeout=30.0,
     )
+    secrets = SecretStore()
+    logger = logging.getLogger("snaffle")
+
+    kagi = None
+    kagi_ref = env.get("SNAFFLE_KAGI_KEY", "")
+    if kagi_ref:
+        try:
+            kagi = KagiClient(secrets.resolve(kagi_ref), http=http)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not resolve Kagi key, discovery disabled: %s", exc)
+
     return ServiceContext(
         http=http,
-        secrets=SecretStore(),
+        secrets=secrets,
+        kagi=kagi,
         credentials=parse_credentials(env),
         config={
             "unpaywall_email": env.get("SNAFFLE_UNPAYWALL_EMAIL", ""),
             "crossref_mailto": env.get("SNAFFLE_CROSSREF_MAILTO", ""),
         },
-        logger=logging.getLogger("snaffle"),
+        logger=logger,
     )
 
 
