@@ -73,7 +73,7 @@ def test_can_download_requires_kagi_and_title():
 
 def test_download_fetches_first_working_pdf(tmp_path):
     eprint = "https://eprints.bbk.ac.uk/15945/1/Eve.pdf"
-    kagi_json = {"data": [{"t": 0, "url": eprint, "title": "PDF", "snippet": ""}]}
+    kagi_json = {"data": {"search": [{"url": eprint, "title": "PDF", "snippet": ""}]}}
 
     def kagi_handler(request):
         return httpx.Response(200, json=kagi_json)

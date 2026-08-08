@@ -1,12 +1,12 @@
 """Kagi Search API client, used for full-text and repository discovery.
 
-Authentication is a ``Authorization: Bot <token>`` header. Result rows have
-``t == 0``; ``t == 1`` rows are related-search suggestions and are ignored.
+Uses the v1 search endpoint: a POST with ``Authorization: Bearer <token>`` and a
+JSON ``{"query": ...}`` body. Results are returned under ``data.search``.
 """
 
 from __future__ import annotations
 
-_ENDPOINT = "https://kagi.com/api/v0/search"
+_ENDPOINT = "https://kagi.com/api/v1/search"
 
 
 class KagiClient:
@@ -17,23 +17,27 @@ class KagiClient:
     def search(self, query: str, limit: int = 10) -> list[dict]:
         """Return web results as ``[{"url", "title", "snippet"}, ...]``."""
         try:
-            response = self.http.get(
+            response = self.http.post(
                 _ENDPOINT,
-                params={"q": query, "limit": limit},
-                headers={"Authorization": f"Bot {self.api_key}"},
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"query": query, "limit": limit},
             )
         except Exception:  # noqa: BLE001 - discovery must never sink a run
             return []
         if response.status_code != 200:
             return []
-        rows = response.json().get("data", [])
+        rows = (response.json().get("data") or {}).get("search") or []
         results = []
         for row in rows:
-            if row.get("t") != 0 or not row.get("url"):
+            url = row.get("url")
+            if not url:
                 continue
             results.append(
                 {
-                    "url": row["url"],
+                    "url": url,
                     "title": row.get("title", ""),
                     "snippet": row.get("snippet", ""),
                 }
