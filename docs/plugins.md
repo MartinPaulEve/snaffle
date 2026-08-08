@@ -89,14 +89,30 @@ Download plugins run in ascending `priority` order and the **first success
 blocks the rest** for that work. Set priority to reflect how likely the source
 is to hold a final PDF:
 
-- ~20 — legal open-access version of record (e.g. Unpaywall)
+- ~15 — a direct file URL the search already found (the `oa` plugin: downloads
+  any `pdf_url`, the single highest-yield path)
+- ~25 — full-text discovery via Kagi web search
+- ~30 — the academic's own repository deposits (KCWorks)
 - ~40 — authenticated publisher platforms (JSTOR, Project MUSE)
-- ~60 — institutional repositories (often accepted manuscripts)
+- ~60 — other institutional repositories (often accepted manuscripts)
+- ~70 — Unpaywall (frequently wrong; a late fallback)
 - ~80 — preprint servers (arXiv) — a fallback, not the record
+
+If your source already knows a `pdf_url`, you often need no download method of
+your own — the generic `oa` plugin will fetch it. Add a download method only
+when retrieval needs special handling (authentication, a two-step file URL).
+Use `snaffle.fetch.fetch_document`, which follows the presigned-URL bodies that
+InvenioRDM/KCWorks return and returns `None` on failure.
 
 Report the copy you obtained with `DownloadResult.quality`
 (`CopyQuality.FINAL`, `PREPRINT`, or `OTHER`) so a final PDF is preferred over a
 draft, a Word file, or plain text.
+
+**Browser-gated sources.** JSTOR and Project MUSE fingerprint and block
+non-browser HTTP clients, so their search skips unless `ctx.browser` is set. A
+real stealth browser session (and the JSTOR/MUSE authenticated download that
+depends on it) is not yet wired up — it is the main outstanding work for
+login-required, non-open-access sources.
 
 ## The `Publication` model
 
