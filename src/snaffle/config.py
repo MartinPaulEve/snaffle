@@ -7,7 +7,7 @@ from pathlib import Path
 from snaffle.models import Credential
 
 _PREFIX = "SNAFFLE_CRED_"
-_SUFFIXES = ("_USER", "_PASS", "_OTP", "_EZPROXY")
+_SUFFIXES = ("_USER", "_PASS", "_OTP", "_EZPROXY", "_MFA", "_OKTA")
 
 
 def _institution_from_key(key: str) -> str | None:
@@ -45,6 +45,8 @@ def parse_credentials(env: dict) -> list[Credential]:
                 password_ref=fields.get("_PASS", ""),
                 otp_ref=fields.get("_OTP"),
                 ezproxy_base=fields.get("_EZPROXY"),
+                mfa_method=(fields.get("_MFA") or "totp").strip().lower(),
+                okta_org=fields.get("_OKTA"),
             )
         )
     return creds

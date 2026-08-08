@@ -33,3 +33,23 @@ def test_parse_multiple_credentials():
 def test_parse_ignores_unrelated_env():
     env = {"PATH": "/usr/bin", "HOME": "/home/ada"}
     assert parse_credentials(env) == []
+
+
+def test_credential_defaults_to_totp_mfa():
+    env = {"SNAFFLE_CRED_BIRKBECK_USER": "ada", "SNAFFLE_CRED_BIRKBECK_PASS": "p"}
+    (c,) = parse_credentials(env)
+    assert c.mfa_method == "totp"
+    assert c.okta_org is None
+
+
+def test_parse_okta_push_credential():
+    env = {
+        "SNAFFLE_CRED_MSU_USER": "grace",
+        "SNAFFLE_CRED_MSU_PASS": "op://Personal/MSU/password",
+        "SNAFFLE_CRED_MSU_MFA": "push",
+        "SNAFFLE_CRED_MSU_OKTA": "https://msu.okta.com",
+    }
+    (c,) = parse_credentials(env)
+    assert c.institution == "MSU"
+    assert c.mfa_method == "push"
+    assert c.okta_org == "https://msu.okta.com"

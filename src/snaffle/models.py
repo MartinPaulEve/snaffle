@@ -67,3 +67,7 @@ class Credential:
     password_ref: str  # op:// reference or literal
     otp_ref: str | None = None  # op:// item reference for TOTP
     ezproxy_base: str | None = None
+    #: Second-factor method: "totp" (default) or "push" (approve on device).
+    mfa_method: str = "totp"
+    #: Okta org base URL, required when mfa_method == "push".
+    okta_org: str | None = None
