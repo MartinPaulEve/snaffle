@@ -22,11 +22,24 @@ def test_extract_oa_pdf_url_none_when_closed():
     assert extract_oa_pdf_url({"best_oa_location": None, "oa_locations": []}) is None
 
 
-def test_unpaywall_can_download_requires_doi():
-    ctx = ServiceContext(http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(404))))  # noqa: E501
-    plugin = UnpaywallPlugin(ctx)
+def _ctx(handler=lambda r: httpx.Response(404), email="ada@real.ac.uk"):
+    return ServiceContext(
+        http=httpx.Client(transport=httpx.MockTransport(handler)),
+        config={"unpaywall_email": email},
+    )
+
+
+def test_unpaywall_can_download_requires_doi_and_real_email():
+    plugin = UnpaywallPlugin(_ctx())
     assert plugin.can_download(Publication(title="x", doi="10.1/x")) is True
     assert plugin.can_download(Publication(title="x")) is False
+
+
+def test_unpaywall_skipped_without_a_real_email():
+    # Unpaywall 422s on placeholder/missing emails, so it must not be attempted.
+    pub = Publication(title="x", doi="10.1/x")
+    assert UnpaywallPlugin(_ctx(email="")).can_download(pub) is False
+    assert UnpaywallPlugin(_ctx(email="you@example.com")).can_download(pub) is False
 
 
 def test_normalize_doi_strips_prefixes_and_whitespace():
@@ -52,7 +65,7 @@ def test_unpaywall_queries_clean_doi_even_when_stored_as_url(tmp_path):
 
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(handler)),
-        config={"unpaywall_email": "ada@example.com"},
+        config={"unpaywall_email": "ada@real.ac.uk"},
     )
     pub = Publication(title="x", doi="https://doi.org/10.1234/abc")
     UnpaywallPlugin(ctx).download(pub, tmp_path / "out.pdf")
@@ -66,7 +79,7 @@ def test_unpaywall_422_is_clean_failure(tmp_path):
 
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(handler)),
-        config={"unpaywall_email": "ada@example.com"},
+        config={"unpaywall_email": "ada@real.ac.uk"},
     )
     result = UnpaywallPlugin(ctx).download(
         Publication(title="x", doi="10.1234/abc"), tmp_path / "out.pdf"
@@ -85,7 +98,7 @@ def test_unpaywall_download_fetches_pdf(tmp_path):
 
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(handler)),
-        config={"unpaywall_email": "ada@example.com"},
+        config={"unpaywall_email": "ada@real.ac.uk"},
     )
     plugin = UnpaywallPlugin(ctx)
     pub = Publication(title="x", doi="10.1234/abc")

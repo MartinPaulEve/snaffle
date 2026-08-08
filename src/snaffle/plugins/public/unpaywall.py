@@ -17,6 +17,15 @@ from snaffle.plugins.base import DownloadCapability, Plugin
 API = "https://api.unpaywall.org/v2/"
 
 
+def is_real_email(email: str) -> bool:
+    """Unpaywall 422s on missing or placeholder emails, so gate on a real one."""
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return False
+    domain = email.rsplit("@", 1)[1]
+    return domain not in ("example.com", "example.org", "example.net")
+
+
 def normalize_doi(doi: str) -> str:
     """Reduce any DOI form to the bare ``10.xxxx/yyyy`` string Unpaywall wants."""
     cleaned = (doi or "").strip()
@@ -44,13 +53,15 @@ class UnpaywallPlugin(Plugin, DownloadCapability):
     priority = 70  # frequently wrong; run after discovery and publisher sources
 
     def can_download(self, publication: Publication) -> bool:
-        return bool(publication.doi)
+        return bool(publication.doi) and is_real_email(self.ctx.config.get("unpaywall_email", ""))
 
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
         doi = normalize_doi(publication.doi)
         if not doi:
             return DownloadResult(success=False, error="no usable DOI")
-        email = self.ctx.config.get("unpaywall_email") or "info@example.com"
+        email = self.ctx.config.get("unpaywall_email", "")
+        if not is_real_email(email):
+            return DownloadResult(success=False, error="set a real SNAFFLE_UNPAYWALL_EMAIL")
         meta = self.ctx.http.get(f"{API}{doi}", params={"email": email})
         if meta.status_code != 200:
             return DownloadResult(success=False, error=f"unpaywall HTTP {meta.status_code}")
