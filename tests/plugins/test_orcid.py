@@ -4,6 +4,14 @@ from snaffle.models import WorkType
 from snaffle.plugins.public.orcid import OrcidPlugin, parse_orcid_works
 from snaffle.services import ServiceContext
 
+
+class FakeResolver:
+    def __init__(self, orcid):
+        self._orcid = orcid
+
+    def resolve(self, name):
+        return self._orcid
+
 WORKS = {
     "group": [
         {
@@ -49,7 +57,7 @@ def test_parse_orcid_works_maps_fields_and_marks_verified():
     assert book.extra.get("orcid_verified") is True
 
 
-def test_orcid_plugin_fetches_the_configured_record():
+def test_orcid_plugin_fetches_the_discovered_record():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -59,7 +67,7 @@ def test_orcid_plugin_fetches_the_configured_record():
 
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(handler)),
-        config={"orcid": "0000-0002-5589-8511"},
+        orcid_resolver=FakeResolver("0000-0002-5589-8511"),
     )
     pubs = OrcidPlugin(ctx).search("Martin Paul Eve")
     assert "0000-0002-5589-8511/works" in seen["url"]
@@ -70,9 +78,16 @@ def test_orcid_plugin_fetches_the_configured_record():
     }
 
 
-def test_orcid_plugin_noop_without_orcid():
+def test_orcid_plugin_noop_when_orcid_not_discovered():
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
-        config={},
+        orcid_resolver=FakeResolver(None),
+    )
+    assert OrcidPlugin(ctx).search("Martin Paul Eve") == []
+
+
+def test_orcid_plugin_noop_without_resolver():
+    ctx = ServiceContext(
+        http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))),
     )
     assert OrcidPlugin(ctx).search("Martin Paul Eve") == []

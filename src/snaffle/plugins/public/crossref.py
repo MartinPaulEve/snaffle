@@ -50,7 +50,8 @@ class CrossRefPlugin(Plugin, SearchCapability):
 
     def search(self, academic: str) -> list[Publication]:
         params = {"rows": 100}
-        orcid = self.ctx.config.get("orcid")
+        resolver = self.ctx.orcid_resolver
+        orcid = resolver.resolve(academic) if resolver else None
         if orcid:
             # Author-asserted ORCID: the reliable disambiguator for same-name
             # authors (unlike inferred author-name search).

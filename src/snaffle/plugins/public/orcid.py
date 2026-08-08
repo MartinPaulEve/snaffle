@@ -52,7 +52,8 @@ class OrcidPlugin(Plugin, SearchCapability):
     description = "ORCID curated works record (authoritative)"
 
     def search(self, academic: str) -> list[Publication]:
-        orcid = self.ctx.config.get("orcid")
+        resolver = self.ctx.orcid_resolver
+        orcid = resolver.resolve(academic) if resolver else None
         if not orcid:
             return []
         response = self.ctx.http.get(

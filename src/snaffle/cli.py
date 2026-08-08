@@ -21,6 +21,7 @@ from snaffle.registry import (
 from snaffle.secrets import SecretStore
 from snaffle.services import ServiceContext
 from snaffle.services.kagi import KagiClient
+from snaffle.services.orcid_resolver import OrcidResolver
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -28,7 +29,7 @@ DEFAULT_USER_AGENT = (
 )
 
 
-def build_context(env: dict) -> ServiceContext:
+def build_context(env: dict, orcid_override: str | None = None) -> ServiceContext:
     """Assemble the ServiceContext shared by every plugin."""
     http = httpx.Client(
         headers={"User-Agent": DEFAULT_USER_AGENT},
@@ -50,11 +51,11 @@ def build_context(env: dict) -> ServiceContext:
         http=http,
         secrets=secrets,
         kagi=kagi,
+        orcid_resolver=OrcidResolver(http, override=orcid_override or None),
         credentials=parse_credentials(env),
         config={
             "unpaywall_email": env.get("SNAFFLE_UNPAYWALL_EMAIL", ""),
             "crossref_mailto": env.get("SNAFFLE_CROSSREF_MAILTO", ""),
-            "orcid": env.get("SNAFFLE_ORCID", ""),
             "openalex_excludes": openalex_excludes(env),
         },
         logger=logger,
@@ -82,16 +83,18 @@ def _configure_logging():
 @click.option("--only", multiple=True, help="Use only these plugins (by name).")
 @click.option("--disable", multiple=True, help="Disable these plugins (by name).")
 @click.option("--style", default="chicago", help="Citation style for the bibliography.")
-@click.option("--orcid", default=None, help="Academic's ORCID iD, to disambiguate authors.")
+@click.option(
+    "--orcid",
+    default=None,
+    help="Override the discovered ORCID iD (use when name resolution is ambiguous).",
+)
 @click.option("--list-plugins", is_flag=True, help="List available plugins and exit.")
 @click.option("--no-download", is_flag=True, help="Search only; do not download.")
 def main(academic, output, only, disable, style, orcid, list_plugins, no_download):
     """Assemble an archive of an ACADEMIC's published outputs."""
     print_banner(stream=sys.stderr)
     env = dict(os.environ)
-    if orcid:
-        env["SNAFFLE_ORCID"] = orcid
-    ctx = build_context(env)
+    ctx = build_context(env, orcid_override=orcid)
     plugins = load_plugins(ctx, env, only, disable)
 
     if list_plugins:

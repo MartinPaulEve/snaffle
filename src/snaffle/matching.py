@@ -21,6 +21,7 @@ def normalize_name(name: str) -> str:
 class ParsedName:
     surname: str
     given_initials: list[str]
+    given_names: list[str]
 
 
 def parse_name(name: str) -> ParsedName:
@@ -37,11 +38,12 @@ def parse_name(name: str) -> ParsedName:
         tokens = normalize_name(raw).split()
         surname = tokens[-1] if tokens else ""
         given = " ".join(tokens[:-1])
-    initials = [tok[0] for tok in given.split() if tok]
+    given_names = [tok for tok in given.split() if tok]
+    initials = [tok[0] for tok in given_names]
     # A multi-word surname (e.g. "van Dijk") keeps only the final token as the
     # comparison key; that is enough for our reject/keep decision.
     surname = surname.split()[-1] if surname.split() else surname
-    return ParsedName(surname=surname, given_initials=initials)
+    return ParsedName(surname=surname, given_initials=initials, given_names=given_names)
 
 
 def _one_matches(target: ParsedName, candidate: ParsedName) -> bool:

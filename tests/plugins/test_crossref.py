@@ -67,16 +67,42 @@ def test_crossref_search_hits_api_and_parses():
     assert {p.title for p in pubs} == {"On the Origin of Testing", "A Monograph"}
 
 
-def test_crossref_uses_orcid_filter_when_configured():
+class _StubResolver:
+    def __init__(self, orcid):
+        self._orcid = orcid
+
+    def resolve(self, name):
+        return self._orcid
+
+
+def test_crossref_uses_orcid_filter_when_discovered():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["filter"] = request.url.params.get("filter")
+        seen["author"] = request.url.params.get("query.author")
         return httpx.Response(200, json=SAMPLE)
 
     ctx = ServiceContext(
         http=httpx.Client(transport=httpx.MockTransport(handler)),
-        config={"orcid": "0000-0002-5589-8511"},
+        orcid_resolver=_StubResolver("0000-0002-5589-8511"),
     )
     CrossRefPlugin(ctx).search("Martin Paul Eve")
     assert "orcid:0000-0002-5589-8511" in (seen["filter"] or "")
+
+
+def test_crossref_falls_back_to_name_when_orcid_ambiguous():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["filter"] = request.url.params.get("filter")
+        seen["author"] = request.url.params.get("query.author")
+        return httpx.Response(200, json=SAMPLE)
+
+    ctx = ServiceContext(
+        http=httpx.Client(transport=httpx.MockTransport(handler)),
+        orcid_resolver=_StubResolver(None),
+    )
+    CrossRefPlugin(ctx).search("Martin Paul Eve")
+    assert seen["filter"] is None
+    assert seen["author"] == "Martin Paul Eve"

@@ -24,6 +24,7 @@ class ServiceContext:
     tor: Any = None  # snaffle.services.tor.TorService
     captcha: Any = None  # snaffle.services.captcha.TwoCaptchaClient
     kagi: Any = None  # snaffle.services.kagi.KagiClient
+    orcid_resolver: Any = None  # snaffle.services.orcid_resolver.OrcidResolver
     credentials: list = field(default_factory=list)  # list[Credential]
     config: dict = field(default_factory=dict)
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger("snaffle"))

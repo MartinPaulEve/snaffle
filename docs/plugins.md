@@ -124,8 +124,13 @@ bypasses name matching entirely — the curated ORCID record is authoritative.
 
 ## ORCID disambiguation
 
-When an ORCID iD is supplied (`--orcid` or `SNAFFLE_ORCID`, exposed as
-`ctx.config["orcid"]`), two things happen: the `orcid` plugin fetches the
+The academic's ORCID iD is **discovered at run time** from their name (it is a
+property of the search, not of the environment). `ctx.orcid_resolver.resolve(
+academic)` queries the ORCID registry and returns the iD only when the name
+maps to exactly one ORCID — if two real people share the name it returns
+`None` rather than guessing. Pass `--orcid` to override an ambiguous name.
+
+Given a resolved ORCID, two things happen: the `orcid` plugin fetches the
 academic's *curated* works record from pub.orcid.org (authoritative — mark such
 results `orcid_verified`), and CrossRef switches to an author-asserted
 `filter=orcid:` query. This resolves same-name-different-person collisions.
