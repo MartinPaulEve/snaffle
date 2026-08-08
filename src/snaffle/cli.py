@@ -155,10 +155,14 @@ def _institutional_login(ctx, institution: str, logger):
             f"No EZProxy base configured for institution '{institution}' "
             "(set SNAFFLE_CRED_<INST>_EZPROXY)."
         )
+    import time
+
     service = BrowserService(headless=False)
     session = service.session()
     # Navigate to a proxied publisher so EZProxy sends the user to institutional login.
     session.get(build_proxied_url("https://www.jstor.org", cred.ezproxy_base))
+    time.sleep(6)  # let the EZProxy -> IdP redirect settle
+    click.echo(f"SSO login URL: {session.current_url}")
     logger.info(
         "A browser window has opened. Log into %s and approve any push; waiting…", institution
     )
