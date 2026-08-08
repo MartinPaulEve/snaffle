@@ -3,17 +3,37 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
+from snaffle.fetch import fetch_document, looks_like_pdf
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin, SearchCapability
 from snaffle.plugins.public._helpers import first_year
 
 
-def _first_pdf(files: dict) -> str | None:
-    for name, entry in (files or {}).get("entries", {}).items():
-        if name.lower().endswith(".pdf"):
-            return entry.get("links", {}).get("content")
-    return None
+def _pdf_file_url(hit: dict) -> str | None:
+    """Build the file-content download URL for a record's PDF file, if any.
+
+    InvenioRDM search listings do not include per-file download links, so the
+    URL is composed from the record's API self-link and the file key:
+    ``{self}/files/{key}/content``. The PDF entry is preferred over any other
+    attachment (markdown, video, dataset).
+    """
+    self_api = (hit.get("links") or {}).get("self")
+    entries = (hit.get("files") or {}).get("entries") or {}
+    if not self_api or not entries:
+        return None
+    pdf_key = None
+    for key, entry in entries.items():
+        is_pdf = (entry.get("ext") == "pdf") or key.lower().endswith(".pdf") or (
+            entry.get("mimetype") == "application/pdf"
+        )
+        if is_pdf:
+            pdf_key = entry.get("key", key)
+            break
+    if pdf_key is None:
+        return None
+    return f"{self_api.rstrip('/')}/files/{quote(pdf_key)}/content"
 
 
 def parse_invenio_hits(payload: dict) -> list[Publication]:
@@ -30,7 +50,7 @@ def parse_invenio_hits(payload: dict) -> list[Publication]:
                 authors=[a for a in authors if a],
                 year=first_year(meta.get("publication_date")),
                 doi=(hit.get("pids", {}).get("doi", {}) or {}).get("identifier"),
-                pdf_url=_first_pdf(hit.get("files", {})),
+                pdf_url=_pdf_file_url(hit),
                 url=hit.get("links", {}).get("self_html"),
                 sources=["inveniordm"],
             )
@@ -60,9 +80,9 @@ class InvenioRDMPlugin(Plugin, SearchCapability, DownloadCapability):
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
         if not publication.pdf_url:
             return DownloadResult(success=False, error="no file")
-        response = self.ctx.http.get(publication.pdf_url)
-        if response.status_code != 200 or not response.content:
-            return DownloadResult(success=False, error=f"HTTP {response.status_code}")
+        data = fetch_document(self.ctx.http, publication.pdf_url)
+        if not data or not looks_like_pdf(data):
+            return DownloadResult(success=False, error="no PDF at file URL")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(response.content)
+        dest.write_bytes(data)
         return DownloadResult(success=True, path=dest, quality=CopyQuality.PREPRINT)

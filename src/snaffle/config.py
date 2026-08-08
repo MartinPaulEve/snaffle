@@ -53,6 +53,20 @@ def parse_credentials(env: dict) -> list[Credential]:
     return creds
 
 
+def load_env_file(path=".env") -> dict:
+    """Read a ``.env`` file into a dict (empty if it does not exist).
+
+    Values are parsed by python-dotenv, which handles quoting and inline
+    comments. This does not touch ``os.environ``; the caller decides precedence.
+    """
+    from dotenv import dotenv_values
+
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    return {k: v for k, v in dotenv_values(p).items() if v is not None}
+
+
 def openalex_excludes(env: dict) -> dict[str, list[str]]:
     """Parse SNAFFLE_OPENALEX_EXCLUDES into ``{academic name: [work IDs]}``.
 

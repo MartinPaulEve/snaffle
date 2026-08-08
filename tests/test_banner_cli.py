@@ -1,7 +1,15 @@
+import pytest
 from click.testing import CliRunner
 
 from snaffle.banner import render_banner
 from snaffle.cli import main
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch):
+    # Never read the developer's real .env (which may hold op:// refs that shell
+    # out to 1Password) when exercising the CLI in tests.
+    monkeypatch.setattr("snaffle.cli.load_env_file", lambda path=".env": {})
 
 
 def test_render_banner_contains_name():

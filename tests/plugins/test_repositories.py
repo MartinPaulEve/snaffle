@@ -7,27 +7,45 @@ from snaffle.plugins.public.inveniordm import parse_invenio_hits
 from snaffle.plugins.public.openlibrary import parse_openlibrary_search
 from snaffle.plugins.public.pure import parse_pure_results
 
+# Shaped like a real InvenioRDM/KCWorks record: file entries carry no
+# links.content, so the download URL must be built from the record self-link.
 INVENIO = {
     "hits": {
         "hits": [
             {
+                "links": {
+                    "self": "https://works.hcommons.org/api/records/8pgtg-6ta28",
+                    "self_html": "https://works.hcommons.org/records/8pgtg-6ta28",
+                },
                 "metadata": {
                     "title": "Repository Deposit One",
                     "publication_date": "2026-02-01",
                     "creators": [{"person_or_org": {"name": "Lovelace, Ada"}}],
                 },
-                "files": {"entries": {"paper.pdf": {"links": {"content": "https://repo/paper.pdf"}}}},
+                "pids": {"doi": {"identifier": "10.59348/xyz"}},
+                "files": {
+                    "entries": {
+                        "notes.md": {"ext": "md", "key": "notes.md"},
+                        "paper one.pdf": {"ext": "pdf", "key": "paper one.pdf",
+                                          "mimetype": "application/pdf"},
+                    }
+                },
             }
         ]
     }
 }
 
 
-def test_parse_invenio_hits():
+def test_parse_invenio_hits_builds_content_url_and_picks_pdf():
     pubs = parse_invenio_hits(INVENIO)
     assert pubs[0].title == "Repository Deposit One"
     assert pubs[0].year == 2026
-    assert pubs[0].pdf_url == "https://repo/paper.pdf"
+    # The PDF entry is chosen over the markdown one, and the download URL is the
+    # record's file-content endpoint (space in the key percent-encoded).
+    assert pubs[0].pdf_url == (
+        "https://works.hcommons.org/api/records/8pgtg-6ta28/files/paper%20one.pdf/content"
+    )
+    assert pubs[0].doi == "10.59348/xyz"
     assert "inveniordm" in pubs[0].sources
 
 

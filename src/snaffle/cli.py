@@ -16,7 +16,7 @@ import click
 import httpx
 
 from snaffle.banner import print_banner
-from snaffle.config import openalex_excludes, parse_credentials, plugin_dirs
+from snaffle.config import load_env_file, openalex_excludes, parse_credentials, plugin_dirs
 from snaffle.output import nuke_author_dir
 from snaffle.registry import (
     discover_plugin_classes,
@@ -51,7 +51,11 @@ def build_context(env: dict, orcid_override: str | None = None) -> ServiceContex
         try:
             kagi = KagiClient(secrets.resolve(kagi_ref), http=http)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("could not resolve Kagi key, discovery disabled: %s", exc)
+            logger.warning(
+                "could not resolve Kagi key (is 1Password signed in? try `op signin`); "
+                "discovery disabled: %s",
+                exc,
+            )
 
     return ServiceContext(
         http=http,
@@ -71,6 +75,11 @@ def build_context(env: dict, orcid_override: str | None = None) -> ServiceContex
 def load_plugins(ctx: ServiceContext, env: dict, only, disable):
     classes = discover_plugin_classes(plugin_dirs(env))
     return instantiate_plugins(classes, ctx, only=list(only) or None, disable=list(disable))
+
+
+def _environment() -> dict:
+    """The process environment overlaid on values from a local ``.env`` file."""
+    return {**load_env_file(".env"), **os.environ}
 
 
 def _configure_logging():
@@ -123,7 +132,7 @@ def _shared_options(func):
 def _run_activity(academic, output, only, disable, nuke, style, orcid, do_search, do_download):
     from snaffle import manifest, pipeline
 
-    env = dict(os.environ)
+    env = _environment()
     ctx = build_context(env, orcid_override=orcid)
     plugins = load_plugins(ctx, env, only, disable)
     logger = _configure_logging()
@@ -196,7 +205,7 @@ def download(academic, output, only, disable, nuke):
 def list_plugins_cmd():
     from snaffle.plugins.base import is_download_plugin, is_search_plugin
 
-    env = dict(os.environ)
+    env = _environment()
     ctx = build_context(env)
     plugins = load_plugins(ctx, env, (), ())
     for p in sorted(plugins, key=lambda p: p.name):

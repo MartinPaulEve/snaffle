@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import subprocess
 
+#: Cap on how long a single ``op`` call may take, so a signed-out or
+#: unreachable 1Password never hangs the whole run.
+OP_TIMEOUT_SECONDS = 30
+
 
 def _default_runner(args: list[str]) -> str:
     return subprocess.run(  # noqa: S603
-        args, capture_output=True, text=True, check=True
+        args, capture_output=True, text=True, check=True, timeout=OP_TIMEOUT_SECONDS
     ).stdout
 
 

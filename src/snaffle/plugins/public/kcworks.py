@@ -1,27 +1,41 @@
 """KCWorks plugin: Knowledge Commons Works, a hosted InvenioRDM repository.
 
 A concrete, always-available scholarly repository (not an institution-specific
-endpoint that has to be configured). It reuses the InvenioRDM record parser.
+endpoint that has to be configured). Where the academic's ORCID is known, the
+records are queried by ORCID for a clean, complete list; otherwise by name.
+Deposits here are frequently the only open copy of blog posts and talks.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from snaffle.fetch import fetch_document, looks_like_pdf
 from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin, SearchCapability
 from snaffle.plugins.public.inveniordm import parse_invenio_hits
 
 BASE = "https://works.hcommons.org"
+_ORCID_FIELD = "metadata.creators.person_or_org.identifiers.identifier"
 
 
 class KCWorksPlugin(Plugin, SearchCapability, DownloadCapability):
     name = "kcworks"
     description = "Knowledge Commons Works (InvenioRDM)"
-    priority = 50
+    priority = 30  # author's own deposits: reliable open copies, try early
+
+    def _query(self, academic: str) -> str:
+        resolver = self.ctx.orcid_resolver
+        orcid = resolver.resolve(academic) if resolver else None
+        # An ORCID-scoped query returns only this person's deposits; a name
+        # query returns a large, noisy full-text result set.
+        return f"{_ORCID_FIELD}:{orcid}" if orcid else f'"{academic}"'
 
     def search(self, academic: str) -> list[Publication]:
-        response = self.ctx.http.get(f"{BASE}/api/records", params={"q": academic})
+        response = self.ctx.http.get(
+            f"{BASE}/api/records",
+            params={"q": self._query(academic), "size": 100},
+        )
         response.raise_for_status()
         pubs = parse_invenio_hits(response.json())
         for pub in pubs:
@@ -34,9 +48,9 @@ class KCWorksPlugin(Plugin, SearchCapability, DownloadCapability):
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
         if not publication.pdf_url:
             return DownloadResult(success=False, error="no file")
-        response = self.ctx.http.get(publication.pdf_url)
-        if response.status_code != 200 or not response.content:
-            return DownloadResult(success=False, error=f"HTTP {response.status_code}")
+        data = fetch_document(self.ctx.http, publication.pdf_url)
+        if not data or not looks_like_pdf(data):
+            return DownloadResult(success=False, error="no PDF at file URL")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(response.content)
+        dest.write_bytes(data)
         return DownloadResult(success=True, path=dest, quality=CopyQuality.PREPRINT)
