@@ -44,6 +44,12 @@ class JstorPlugin(Plugin, SearchCapability, DownloadCapability):
     priority = 40
 
     def search(self, academic: str) -> list[Publication]:
+        # JSTOR fingerprints and blocks non-browser clients (HTTP 403), so a
+        # plain request is pointless. Skip cleanly until a real browser session
+        # is available via ctx.browser.
+        if not self.ctx.browser:
+            self.ctx.logger.info("jstor search needs a browser session; skipping")
+            return []
         response = self.ctx.http.get(
             "https://www.jstor.org/action/doBasicSearch",
             params={"Query": f"au:{academic}"},

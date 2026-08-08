@@ -40,6 +40,11 @@ class ProjectMusePlugin(Plugin, SearchCapability, DownloadCapability):
     priority = 40
 
     def search(self, academic: str) -> list[Publication]:
+        # Project MUSE blocks non-browser clients; skip until a browser session
+        # is available rather than emitting a 403 for every run.
+        if not self.ctx.browser:
+            self.ctx.logger.info("project muse search needs a browser session; skipping")
+            return []
         response = self.ctx.http.get(
             "https://muse.jhu.edu/search",
             params={"action": "search", "query": academic},
