@@ -67,9 +67,9 @@ def download_one(
             _log(logger, logging.WARNING, f"'{name}' can_download error: {exc}")
             continue
 
-        ext_hint = "pdf"
-        dest = publication_path(output_dir, author, pub, ext_hint)
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        # Do not create the year directory here; each plugin makes it only when
+        # it actually writes a file, so failed works leave no empty folders.
+        dest = publication_path(output_dir, author, pub, "pdf")
         try:
             result = plugin.download(pub, dest)
         except Exception as exc:  # noqa: BLE001

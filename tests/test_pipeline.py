@@ -180,6 +180,14 @@ def test_search_phase_writes_manifest_and_bibliography_without_downloading(tmp_p
     assert not (author_dir / "failures.txt").exists()
 
 
+def test_failed_downloads_leave_no_empty_year_directory(tmp_path: Path):
+    pub = Publication(title="Unfindable", venue="V", year=2026)
+    dl = RecordingDownloader("d", priority=10, succeeds=False)
+    download_phase("Ada Lovelace", tmp_path, [dl], [pub])
+    # A work that could not be downloaded must not leave an empty year folder.
+    assert not (tmp_path / "Ada Lovelace" / "2026").exists()
+
+
 def test_download_phase_downloads_the_supplied_list(tmp_path: Path):
     pub = Publication(title="A Work", venue="V", year=2026)
     dl = RecordingDownloader("d", priority=10, succeeds=True)
