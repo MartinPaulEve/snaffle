@@ -11,9 +11,32 @@ def test_render_banner_contains_name():
     assert plain.count("\n") >= 3
 
 
+def test_render_banner_is_solid_block_wordmark():
+    # Old-school solid block-pixel letters, like refchecker's wordmark.
+    plain = render_banner(color=False)
+    assert "█" in plain
+    # The wordmark is 5 rows tall.
+    block_rows = [line for line in plain.splitlines() if "█" in line]
+    assert len(block_rows) >= 5
+
+
 def test_render_banner_colour_includes_ansi():
     coloured = render_banner(color=True)
     assert "\x1b[" in coloured
+
+
+def test_render_banner_uses_truecolor_gradient():
+    # A cyan→green vertical gradient means several distinct 24-bit colours.
+    coloured = render_banner(color=True)
+    truecolor_codes = {
+        seg.split("m")[0]
+        for seg in coloured.split("\x1b[38;2;")[1:]
+    }
+    assert len(truecolor_codes) >= 3
+
+
+def test_render_banner_no_color_is_plain():
+    assert "\x1b[" not in render_banner(color=False)
 
 
 def test_help_shows_usage():
