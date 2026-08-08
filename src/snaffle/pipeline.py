@@ -8,6 +8,7 @@ from pathlib import Path
 
 from snaffle.bibliography import write_bibliography, write_failures
 from snaffle.dedupe import deduplicate
+from snaffle.matching import author_matches
 from snaffle.models import DownloadResult, Publication
 from snaffle.output import already_downloaded, publication_path
 
@@ -34,8 +35,13 @@ def run_search(search_plugins: list, academic: str, logger=None) -> list[Publica
         except Exception as exc:  # noqa: BLE001 - one plugin must not sink the run
             _log(logger, logging.WARNING, f"search plugin '{name}' failed: {exc}")
             continue
-        _log(logger, logging.INFO, f"search plugin '{name}' found {len(results)} item(s)")
-        collected.extend(results)
+        kept = [p for p in results if author_matches(academic, p.authors)]
+        dropped = len(results) - len(kept)
+        msg = f"search plugin '{name}' found {len(results)} item(s)"
+        if dropped:
+            msg += f", dropped {dropped} as author mismatch"
+        _log(logger, logging.INFO, msg)
+        collected.extend(kept)
     return deduplicate(collected)
 
 

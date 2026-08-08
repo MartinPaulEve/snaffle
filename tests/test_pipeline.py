@@ -44,6 +44,31 @@ def test_run_search_merges_and_dedupes():
     assert len(result) == 1
 
 
+def test_run_search_drops_author_mismatches():
+    real = Publication(
+        title="Literature Against Criticism",
+        authors=["Martin Paul Eve"],
+        year=2016,
+    )
+    false_positive = Publication(
+        title="Relationship between Number of Medical Conditions and Quality of Care",
+        authors=["Eve A. Kerr", "Martín Roland", "Paul G Shekelle"],
+        year=2007,
+    )
+    plugins = [FakeSearch("crossref", [real, false_positive])]
+    result = run_search(plugins, "Martin Paul Eve")
+    titles = [p.title for p in result]
+    assert "Literature Against Criticism" in titles
+    assert all("Medical Conditions" not in t for t in titles)
+
+
+def test_run_search_keeps_authorless_results():
+    # A homepage/repository hit with no author list is trusted.
+    pub = Publication(title="Some Book", authors=[], year=2010)
+    result = run_search([FakeSearch("homepage", [pub])], "Martin Paul Eve")
+    assert [p.title for p in result] == ["Some Book"]
+
+
 def test_download_one_stops_at_first_success(tmp_path: Path):
     pub = Publication(title="T", venue="V", year=2026)
     early = RecordingDownloader("early", priority=10, succeeds=True)
