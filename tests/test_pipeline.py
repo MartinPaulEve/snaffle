@@ -1,0 +1,119 @@
+from pathlib import Path
+
+from snaffle.models import CopyQuality, DownloadResult, Publication
+from snaffle.output import publication_path
+from snaffle.pipeline import download_one, run, run_search
+
+
+class FakeSearch:
+    def __init__(self, name, pubs):
+        self.name = name
+        self._pubs = pubs
+
+    def search(self, academic):
+        return self._pubs
+
+
+class RecordingDownloader:
+    def __init__(self, name, priority, succeeds, quality=CopyQuality.FINAL, ext="pdf"):
+        self.name = name
+        self.priority = priority
+        self.succeeds = succeeds
+        self.quality = quality
+        self.ext = ext
+        self.calls = 0
+
+    def can_download(self, publication):
+        return True
+
+    def download(self, publication, dest: Path):
+        self.calls += 1
+        if not self.succeeds:
+            return DownloadResult(success=False, error="no copy")
+        dest = dest.with_suffix("." + self.ext)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"%PDF fake")
+        return DownloadResult(success=True, path=dest, quality=self.quality)
+
+
+def test_run_search_merges_and_dedupes():
+    p = Publication(title="Shared Work", year=2026, doi="10.1/x")
+    p2 = Publication(title="shared work", year=2026, sources=["b"])
+    plugins = [FakeSearch("a", [p]), FakeSearch("b", [p2])]
+    result = run_search(plugins, "Ada Lovelace")
+    assert len(result) == 1
+
+
+def test_download_one_stops_at_first_success(tmp_path: Path):
+    pub = Publication(title="T", venue="V", year=2026)
+    early = RecordingDownloader("early", priority=10, succeeds=True)
+    late = RecordingDownloader("late", priority=90, succeeds=True)
+    result = download_one([early, late], pub, tmp_path, "Ada Lovelace")
+    assert result.success is True
+    assert early.calls == 1
+    assert late.calls == 0  # blocked by the first success
+
+
+def test_download_one_falls_through_to_next_on_failure(tmp_path: Path):
+    pub = Publication(title="T", venue="V", year=2026)
+    failing = RecordingDownloader("f", priority=10, succeeds=False)
+    working = RecordingDownloader("w", priority=20, succeeds=True)
+    result = download_one([failing, working], pub, tmp_path, "Ada Lovelace")
+    assert result.success is True
+    assert failing.calls == 1
+    assert working.calls == 1
+
+
+def test_run_skips_already_downloaded(tmp_path: Path):
+    pub = Publication(title="Existing", venue="V", year=2026)
+    existing = publication_path(tmp_path, "Ada Lovelace", pub, "pdf")
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"%PDF already here")
+
+    dl = RecordingDownloader("d", priority=10, succeeds=True)
+    report = run(
+        "Ada Lovelace",
+        tmp_path,
+        search_plugins=[FakeSearch("s", [pub])],
+        download_plugins=[dl],
+    )
+    assert dl.calls == 0  # incremental: not re-downloaded
+    assert pub.title in [p.title for p in report.downloaded]
+
+
+def test_run_records_failures(tmp_path: Path):
+    pub = Publication(title="Unfindable", venue="V", year=2026)
+    dl = RecordingDownloader("d", priority=10, succeeds=False)
+    report = run(
+        "Ada Lovelace",
+        tmp_path,
+        search_plugins=[FakeSearch("s", [pub])],
+        download_plugins=[dl],
+    )
+    assert [p.title for p in report.failed] == ["Unfindable"]
+    assert report.downloaded == []
+
+
+def test_run_writes_bibliography_and_failure_report(tmp_path: Path):
+    found = Publication(title="Found", venue="V", year=2026)
+    missing = Publication(title="Missing", venue="V", year=2025)
+
+    def dl_can(pub):
+        return pub.title == "Found"
+
+    class Selective(RecordingDownloader):
+        def can_download(self, publication):
+            return publication.title == "Found"
+
+    dl = Selective("d", priority=10, succeeds=True)
+    run(
+        "Ada Lovelace",
+        tmp_path,
+        search_plugins=[FakeSearch("s", [found, missing])],
+        download_plugins=[dl],
+    )
+    author_dir = tmp_path / "Ada Lovelace"
+    assert (author_dir / "bibliography.html").exists()
+    failures = (author_dir / "failures.txt").read_text(encoding="utf-8")
+    assert "Missing" in failures
+    assert "Found" not in failures
