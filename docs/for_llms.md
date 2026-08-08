@@ -81,9 +81,20 @@ quality=...)` where quality is `CopyQuality.FINAL` (version of record),
 
 `ctx.http`, `ctx.secrets` (`resolve("op://…")`, `totp("op://…")`),
 `ctx.browser` (human-like headless Selenium), `ctx.tor`, `ctx.captcha`
-(2Captcha), `ctx.credentials` (list of institutional `Credential`s),
-`ctx.config` (endpoint URLs / emails), `ctx.logger`. Reuse these; never
-reimplement browser launching, login, or secret handling inside a plugin.
+(2Captcha), `ctx.kagi` (Kagi web search — `search(query)` returns
+`[{"url","title","snippet"}]`, `None` if unconfigured), `ctx.credentials`
+(list of institutional `Credential`s), `ctx.config` (endpoint URLs / emails),
+`ctx.logger`. Reuse these; never reimplement browser launching, login, or
+secret handling inside a plugin.
+
+**Discover, don't hard-code.** Do not add a repository endpoint to the
+environment and read it back. If you need to find where an author's works or a
+full text live, search for it with `ctx.kagi`. See `plugins/public/discovery.py`.
+
+**Populate authors honestly.** The pipeline drops a search hit when it lists
+authors and none matches the target academic (surname + first initial). Fill
+`Publication.authors` with the real author list so legitimate works survive and
+false positives are rejected.
 
 ## Config values
 

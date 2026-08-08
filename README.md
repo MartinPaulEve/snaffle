@@ -67,6 +67,15 @@ runtime through the [1Password CLI](https://developer.1password.com/docs/cli/)
 supply **multiple** institutional credentials (e.g. Birkbeck and Michigan
 State); each unlocks different journal access. See `.env.example`.
 
+### Discovery via Kagi
+
+Full-text copies and institutional repositories are **discovered**, not
+pre-configured: set `SNAFFLE_KAGI_KEY` (a [Kagi](https://kagi.com) Search API
+key, or an `op://` reference to one) and snaffle will web-search for each
+work's full text — finding eprints, publisher, and open-repository PDFs that
+DOI resolvers miss. Without a Kagi key the other plugins still run; you just
+lose the discovery download source.
+
 ## Documentation
 
 - `docs/plugins.md` — how the plugin system works and how to write one.

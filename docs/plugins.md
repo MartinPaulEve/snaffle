@@ -71,6 +71,7 @@ so that common behaviour is centralised, never copy-pasted between plugins:
 | `ctx.browser` | Shared headless Selenium browser with human-like fingerprints. |
 | `ctx.tor` | Tor SOCKS proxy settings for blocked pages. |
 | `ctx.captcha` | 2Captcha client for reCAPTCHA / Turnstile. |
+| `ctx.kagi` | Kagi Search client (`search(query)`) for discovering full-text copies and repositories. `None` if no key is configured. |
 | `ctx.credentials` | List of `Credential` (institution, username, password/OTP refs, EZproxy base). |
 | `ctx.config` | Endpoint URLs and contact emails from the environment. |
 | `ctx.logger` | Progress logging (goes to stderr). |
@@ -103,3 +104,21 @@ add your plugin's `name` to `sources`. Books (which often lack DOIs) should set
 
 Deduplication across sources is automatic: works are merged by DOI/ISBN, or by
 fuzzy title + year when no identifier is present.
+
+## Author matching (false-positive control)
+
+Search results are filtered before deduplication: a work is dropped if it lists
+authors and **none** of them matches the target academic by surname and first
+initial (see `snaffle.matching.author_matches`). A work with no listed authors
+is kept, on the assumption that the source was searched by author (homepages,
+repositories). This is what keeps unrelated same-name-fragment hits out of the
+list. Populate `Publication.authors` accurately so this filter can do its job;
+do not stuff unrelated names into the list.
+
+## Discovering full text instead of configuring it
+
+Repository locations are **discovered**, not pre-configured. If your plugin
+needs to find where something lives (an author's repository, a full-text PDF),
+use `ctx.kagi.search(query)` rather than requiring a hard-coded endpoint in the
+environment. The `discovery` download plugin is the reference example: it finds
+eprints, publisher, and open-repository copies by web search.
