@@ -16,17 +16,35 @@ _ENDPOINT = "https://pub.orcid.org/v3.0/expanded-search/"
 def build_query(name: str) -> str:
     """A structured Lucene query for the ORCID registry.
 
-    A field-scoped ``family-name`` / ``given-names`` query returns the handful
-    of genuine matches, unlike a free-text ``q`` which returns tens of
-    thousands of relevance hits whose noise defeats disambiguation.
+    A field-scoped query returns the handful of genuine matches, unlike a
+    free-text ``q`` which returns tens of thousands of relevance hits whose
+    noise defeats disambiguation. Two strategies are ORed so that messy records
+    are still found, because a name like "Martin Paul Eve" may be stored in
+    several ways:
+
+    * ``family-name:eve AND given-names:martin`` — survives a middle name kept
+      in the given-names field (``given-names`` matches any of its tokens); and
+    * ``given-and-family-names:"martin paul eve"`` — survives the middle name
+      being misfiled, e.g. the family name wrongly recorded as "Paul Eve",
+      because the combined field still reads the full name.
+
+    Whatever the query returns is still verified by name afterwards, so breadth
+    here costs precision nothing.
     """
     parsed = parse_name(name)
-    clauses = []
-    if parsed.surname:
-        clauses.append(f"family-name:{parsed.surname}")
+    strict = []
     if parsed.given_names:
-        clauses.append(f"given-names:{parsed.given_names[0]}")
-    return " AND ".join(clauses)
+        strict.append(f"given-names:{parsed.given_names[0]}")
+    if parsed.surname:
+        strict.append(f"family-name:{parsed.surname}")
+
+    parts = []
+    if strict:
+        parts.append("(" + " AND ".join(strict) + ")")
+    full = normalize_name(name)
+    if full:
+        parts.append(f'given-and-family-names:"{full}"')
+    return " OR ".join(parts)
 
 
 class OrcidResolver:

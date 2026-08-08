@@ -3,9 +3,14 @@ import httpx
 from snaffle.services.orcid_resolver import OrcidResolver, build_query
 
 
-def test_build_query_is_field_scoped():
+def test_build_query_is_field_scoped_and_covers_misrecording():
     q = build_query("Martin Paul Eve")
-    assert q == "family-name:eve AND given-names:martin"
+    # Strategy A: survives a middle name kept in the given-names field.
+    assert "given-names:martin" in q
+    assert "family-name:eve" in q
+    # Strategy B: survives the middle name being misfiled into the family name.
+    assert 'given-and-family-names:"martin paul eve"' in q
+    assert " OR " in q
 
 
 def test_resolve_uses_structured_query_not_freetext():
@@ -32,6 +37,25 @@ def _response(results, num=None):
 
 
 def test_resolves_unique_name_match():
+    result = _response(
+        [{"orcid-id": "0000-0002-5589-8511", "given-names": "Martin Paul", "family-names": "Eve"}]
+    )
+    r = _resolver(lambda req: httpx.Response(200, json=result))
+    assert r.resolve("Martin Paul Eve") == "0000-0002-5589-8511"
+
+
+def test_matches_when_middle_name_lands_in_family_field():
+    # ORCID sometimes misrecords "Martin Paul Eve" as given="Martin",
+    # family="Paul Eve". Verification is by last-token surname, so it still
+    # matches and resolves.
+    result = _response(
+        [{"orcid-id": "0000-0002-5589-8511", "given-names": "Martin", "family-names": "Paul Eve"}]
+    )
+    r = _resolver(lambda req: httpx.Response(200, json=result))
+    assert r.resolve("Martin Paul Eve") == "0000-0002-5589-8511"
+
+
+def test_matches_when_middle_name_in_given_field():
     result = _response(
         [{"orcid-id": "0000-0002-5589-8511", "given-names": "Martin Paul", "family-names": "Eve"}]
     )
