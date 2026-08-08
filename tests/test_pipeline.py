@@ -69,6 +69,19 @@ def test_run_search_keeps_authorless_results():
     assert [p.title for p in result] == ["Some Book"]
 
 
+def test_run_search_keeps_orcid_verified_even_with_mismatched_authors():
+    # An ORCID-record work is authoritative; keep it even if the author string
+    # would otherwise fail name matching.
+    pub = Publication(
+        title="A Genuine Work",
+        authors=["Someone Else"],
+        year=2016,
+        extra={"orcid_verified": True},
+    )
+    result = run_search([FakeSearch("orcid", [pub])], "Martin Paul Eve")
+    assert [p.title for p in result] == ["A Genuine Work"]
+
+
 def test_download_one_stops_at_first_success(tmp_path: Path):
     pub = Publication(title="T", venue="V", year=2026)
     early = RecordingDownloader("early", priority=10, succeeds=True)

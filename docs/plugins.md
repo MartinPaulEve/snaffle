@@ -76,8 +76,12 @@ so that common behaviour is centralised, never copy-pasted between plugins:
 | `ctx.config` | Endpoint URLs and contact emails from the environment. |
 | `ctx.logger` | Progress logging (goes to stderr). |
 
-Institutional login (EZproxy + TOTP) is provided centrally via
-`snaffle.services.ezproxy`; do not reimplement it in a plugin.
+Institutional login is provided centrally via `snaffle.services.ezproxy`; do
+not reimplement it in a plugin. Each `Credential` names a second factor:
+`totp` (a code from a 1Password item — `EZProxySession.current_otp()`) or
+`push` (approve an Okta Verify push on your phone — `obtain_session_token()`
+drives the Okta flow and blocks until you tap approve). MSU-style Okta accounts
+use `push`.
 
 ## Download priority and copy quality
 
@@ -114,6 +118,20 @@ is kept, on the assumption that the source was searched by author (homepages,
 repositories). This is what keeps unrelated same-name-fragment hits out of the
 list. Populate `Publication.authors` accurately so this filter can do its job;
 do not stuff unrelated names into the list.
+
+A work marked `extra["orcid_verified"] = True` (as the ORCID plugin does)
+bypasses name matching entirely — the curated ORCID record is authoritative.
+
+## ORCID disambiguation
+
+When an ORCID iD is supplied (`--orcid` or `SNAFFLE_ORCID`, exposed as
+`ctx.config["orcid"]`), two things happen: the `orcid` plugin fetches the
+academic's *curated* works record from pub.orcid.org (authoritative — mark such
+results `orcid_verified`), and CrossRef switches to an author-asserted
+`filter=orcid:` query. This resolves same-name-different-person collisions.
+Note a limitation: inferred-authorship sources (OpenAlex) can bind the *correct*
+ORCID to wrong metadata, so an ORCID *filter* there is not trustworthy — only
+the curated ORCID record is. Prefer the ORCID record and CrossRef for identity.
 
 ## Discovering full text instead of configuring it
 

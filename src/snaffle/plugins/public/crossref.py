@@ -49,7 +49,14 @@ class CrossRefPlugin(Plugin, SearchCapability):
     description = "CrossRef DOI metadata API"
 
     def search(self, academic: str) -> list[Publication]:
-        params = {"query.author": academic, "rows": 100}
+        params = {"rows": 100}
+        orcid = self.ctx.config.get("orcid")
+        if orcid:
+            # Author-asserted ORCID: the reliable disambiguator for same-name
+            # authors (unlike inferred author-name search).
+            params["filter"] = f"orcid:{orcid}"
+        else:
+            params["query.author"] = academic
         mailto = self.ctx.config.get("crossref_mailto")
         if mailto:
             params["mailto"] = mailto

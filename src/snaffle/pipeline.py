@@ -35,7 +35,10 @@ def run_search(search_plugins: list, academic: str, logger=None) -> list[Publica
         except Exception as exc:  # noqa: BLE001 - one plugin must not sink the run
             _log(logger, logging.WARNING, f"search plugin '{name}' failed: {exc}")
             continue
-        kept = [p for p in results if author_matches(academic, p.authors)]
+        kept = [
+            p for p in results
+            if p.extra.get("orcid_verified") or author_matches(academic, p.authors)
+        ]
         dropped = len(results) - len(kept)
         msg = f"search plugin '{name}' found {len(results)} item(s)"
         if dropped:

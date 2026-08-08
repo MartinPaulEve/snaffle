@@ -54,6 +54,7 @@ def build_context(env: dict) -> ServiceContext:
         config={
             "unpaywall_email": env.get("SNAFFLE_UNPAYWALL_EMAIL", ""),
             "crossref_mailto": env.get("SNAFFLE_CROSSREF_MAILTO", ""),
+            "orcid": env.get("SNAFFLE_ORCID", ""),
         },
         logger=logger,
     )
@@ -80,12 +81,15 @@ def _configure_logging():
 @click.option("--only", multiple=True, help="Use only these plugins (by name).")
 @click.option("--disable", multiple=True, help="Disable these plugins (by name).")
 @click.option("--style", default="chicago", help="Citation style for the bibliography.")
+@click.option("--orcid", default=None, help="Academic's ORCID iD, to disambiguate authors.")
 @click.option("--list-plugins", is_flag=True, help="List available plugins and exit.")
 @click.option("--no-download", is_flag=True, help="Search only; do not download.")
-def main(academic, output, only, disable, style, list_plugins, no_download):
+def main(academic, output, only, disable, style, orcid, list_plugins, no_download):
     """Assemble an archive of an ACADEMIC's published outputs."""
     print_banner(stream=sys.stderr)
     env = dict(os.environ)
+    if orcid:
+        env["SNAFFLE_ORCID"] = orcid
     ctx = build_context(env)
     plugins = load_plugins(ctx, env, only, disable)
 
