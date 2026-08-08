@@ -133,6 +133,12 @@ Note a limitation: inferred-authorship sources (OpenAlex) can bind the *correct*
 ORCID to wrong metadata, so an ORCID *filter* there is not trustworthy — only
 the curated ORCID record is. Prefer the ORCID record and CrossRef for identity.
 
+For the residual OpenAlex mis-attributions that no filter can catch, list the
+offending work IDs per academic in `SNAFFLE_OPENALEX_EXCLUDES` (a JSON object,
+`{"Academic Name": ["W568507393"]}`); the OpenAlex plugin drops them for that
+academic. The exclusion is scoped to the named academic, so the same work can
+still surface for someone it genuinely belongs to.
+
 ## Discovering full text instead of configuring it
 
 Repository locations are **discovered**, not pre-configured. If your plugin

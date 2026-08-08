@@ -11,7 +11,7 @@ import click
 import httpx
 
 from snaffle.banner import print_banner
-from snaffle.config import parse_credentials, plugin_dirs
+from snaffle.config import openalex_excludes, parse_credentials, plugin_dirs
 from snaffle.registry import (
     discover_plugin_classes,
     download_plugins,
@@ -55,6 +55,7 @@ def build_context(env: dict) -> ServiceContext:
             "unpaywall_email": env.get("SNAFFLE_UNPAYWALL_EMAIL", ""),
             "crossref_mailto": env.get("SNAFFLE_CROSSREF_MAILTO", ""),
             "orcid": env.get("SNAFFLE_ORCID", ""),
+            "openalex_excludes": openalex_excludes(env),
         },
         logger=logger,
     )

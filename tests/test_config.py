@@ -1,4 +1,4 @@
-from snaffle.config import parse_credentials
+from snaffle.config import openalex_excludes, parse_credentials
 
 
 def test_parse_single_credential():
@@ -40,6 +40,26 @@ def test_credential_defaults_to_totp_mfa():
     (c,) = parse_credentials(env)
     assert c.mfa_method == "totp"
     assert c.okta_org is None
+
+
+def test_openalex_excludes_parses_mapping():
+    env = {
+        "SNAFFLE_OPENALEX_EXCLUDES": '{"Martin Paul Eve": ["W568507393"], "Jane Doe": ["W1"]}'
+    }
+    excludes = openalex_excludes(env)
+    assert excludes["Martin Paul Eve"] == ["W568507393"]
+    assert excludes["Jane Doe"] == ["W1"]
+
+
+def test_openalex_excludes_accepts_bare_string_value():
+    env = {"SNAFFLE_OPENALEX_EXCLUDES": '{"Martin Paul Eve": "W568507393"}'}
+    assert openalex_excludes(env)["Martin Paul Eve"] == ["W568507393"]
+
+
+def test_openalex_excludes_empty_when_unset_or_malformed():
+    assert openalex_excludes({}) == {}
+    assert openalex_excludes({"SNAFFLE_OPENALEX_EXCLUDES": "not json"}) == {}
+    assert openalex_excludes({"SNAFFLE_OPENALEX_EXCLUDES": "[1,2,3]"}) == {}
 
 
 def test_parse_okta_push_credential():

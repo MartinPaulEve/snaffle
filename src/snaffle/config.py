@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from snaffle.models import Credential
@@ -50,6 +51,31 @@ def parse_credentials(env: dict) -> list[Credential]:
             )
         )
     return creds
+
+
+def openalex_excludes(env: dict) -> dict[str, list[str]]:
+    """Parse SNAFFLE_OPENALEX_EXCLUDES into ``{academic name: [work IDs]}``.
+
+    OpenAlex sometimes binds the wrong author (even the right ORCID) to junk
+    metadata; this lets a specific work be excluded for a specific academic.
+    Malformed or absent config yields an empty mapping.
+    """
+    raw = env.get("SNAFFLE_OPENALEX_EXCLUDES")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    result: dict[str, list[str]] = {}
+    for academic, ids in data.items():
+        if isinstance(ids, str):
+            result[academic] = [ids]
+        elif isinstance(ids, list):
+            result[academic] = [str(i) for i in ids]
+    return result
 
 
 def plugin_dirs(env: dict) -> list[Path]:

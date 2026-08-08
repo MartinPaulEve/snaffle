@@ -1,7 +1,11 @@
 import httpx
 
 from snaffle.models import WorkType
-from snaffle.plugins.public.openalex import OpenAlexPlugin, parse_openalex_results
+from snaffle.plugins.public.openalex import (
+    OpenAlexPlugin,
+    normalize_work_id,
+    parse_openalex_results,
+)
 from snaffle.services import ServiceContext
 
 SAMPLE = {
@@ -41,3 +45,47 @@ def test_openalex_search_hits_api():
     ctx = ServiceContext(http=httpx.Client(transport=httpx.MockTransport(handler)))
     pubs = OpenAlexPlugin(ctx).search("Ada Lovelace")
     assert pubs[0].title == "Reconstructed Titles in Open Data"
+
+
+def test_normalize_work_id_handles_url_and_bare_forms():
+    assert normalize_work_id("https://openalex.org/W568507393") == "W568507393"
+    assert normalize_work_id("W568507393") == "W568507393"
+
+
+EXCLUDE_SAMPLE = {
+    "results": [
+        {
+            "id": "https://openalex.org/W568507393",
+            "title": "Background to contemporary Greece",
+            "publication_year": 1990,
+            "authorships": [{"author": {"display_name": "Martin Paul Eve"}}],
+        },
+        {
+            "id": "https://openalex.org/W999",
+            "title": "A Real Work",
+            "publication_year": 2016,
+            "authorships": [{"author": {"display_name": "Martin Paul Eve"}}],
+        },
+    ]
+}
+
+
+def _exclude_ctx(excludes):
+    handler = lambda r: httpx.Response(200, json=EXCLUDE_SAMPLE)  # noqa: E731
+    return ServiceContext(
+        http=httpx.Client(transport=httpx.MockTransport(handler)),
+        config={"openalex_excludes": excludes},
+    )
+
+
+def test_search_drops_excluded_work_for_that_academic():
+    ctx = _exclude_ctx({"Martin Paul Eve": ["W568507393"]})
+    titles = [p.title for p in OpenAlexPlugin(ctx).search("Martin Paul Eve")]
+    assert titles == ["A Real Work"]
+
+
+def test_exclude_is_scoped_to_the_named_academic():
+    # The same work is NOT excluded when searching for a different academic.
+    ctx = _exclude_ctx({"Someone Else": ["W568507393"]})
+    titles = [p.title for p in OpenAlexPlugin(ctx).search("Martin Paul Eve")]
+    assert "Background to contemporary Greece" in titles
