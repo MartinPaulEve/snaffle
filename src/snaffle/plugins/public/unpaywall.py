@@ -1,4 +1,11 @@
-"""Unpaywall download plugin: resolve a DOI to a legal open-access PDF."""
+"""Unpaywall download plugin: resolve a DOI to a legal open-access PDF.
+
+Unpaywall is a useful last resort but is frequently wrong (it points at the
+wrong file, or none), so it runs *late* — after discovery and publisher
+sources. It also 422s on anything that is not a bare DOI, so the DOI is
+normalised before the request and a 422/404 is treated as "no copy" rather than
+an error.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,16 @@ from snaffle.models import CopyQuality, DownloadResult, Publication
 from snaffle.plugins.base import DownloadCapability, Plugin
 
 API = "https://api.unpaywall.org/v2/"
+
+
+def normalize_doi(doi: str) -> str:
+    """Reduce any DOI form to the bare ``10.xxxx/yyyy`` string Unpaywall wants."""
+    cleaned = (doi or "").strip()
+    for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "doi:"):
+        if cleaned.lower().startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+    return cleaned.strip()
 
 
 def extract_oa_pdf_url(payload: dict) -> str | None:
@@ -24,14 +41,17 @@ def extract_oa_pdf_url(payload: dict) -> str | None:
 class UnpaywallPlugin(Plugin, DownloadCapability):
     name = "unpaywall"
     description = "Unpaywall open-access PDF locator"
-    priority = 20  # legal OA version of record, run early
+    priority = 70  # frequently wrong; run after discovery and publisher sources
 
     def can_download(self, publication: Publication) -> bool:
         return bool(publication.doi)
 
     def download(self, publication: Publication, dest: Path) -> DownloadResult:
+        doi = normalize_doi(publication.doi)
+        if not doi:
+            return DownloadResult(success=False, error="no usable DOI")
         email = self.ctx.config.get("unpaywall_email") or "info@example.com"
-        meta = self.ctx.http.get(f"{API}{publication.doi}", params={"email": email})
+        meta = self.ctx.http.get(f"{API}{doi}", params={"email": email})
         if meta.status_code != 200:
             return DownloadResult(success=False, error=f"unpaywall HTTP {meta.status_code}")
         pdf_url = extract_oa_pdf_url(meta.json())
