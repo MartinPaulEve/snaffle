@@ -46,6 +46,43 @@ def test_not_duplicates_when_titles_differ():
     assert are_duplicates(a, b) is False
 
 
+def test_duplicates_across_subtitle_variants():
+    # The same book surfaced with and without its subtitle, from sources with
+    # compatible authors and the same year — this must merge.
+    a = Publication(
+        title="Literature Against Criticism",
+        authors=["Martin Paul Eve"],
+        year=2016,
+    )
+    b = Publication(
+        title="Literature Against Criticism: University English and Contemporary Fiction",
+        authors=["Eve, Martin Paul"],
+        year=2016,
+    )
+    assert are_duplicates(a, b) is True
+
+
+def test_short_generic_prefixes_do_not_over_merge():
+    # A short shared opening word must NOT merge two different works.
+    a = Publication(title="Introduction", authors=["Ada Lovelace"], year=2019)
+    b = Publication(title="Introduction to Analytical Engines", authors=["Ada Lovelace"], year=2019)
+    assert are_duplicates(a, b) is False
+
+
+def test_subtitle_variant_needs_compatible_authors():
+    a = Publication(
+        title="Open Access and the Humanities",
+        authors=["Someone Unrelated"],
+        year=2014,
+    )
+    b = Publication(
+        title="Open Access and the Humanities: Contexts, Controversies and the Future",
+        authors=["Different Person"],
+        year=2014,
+    )
+    assert are_duplicates(a, b) is False
+
+
 def test_merge_prefers_richer_metadata_and_unions_sources():
     a = Publication(title="On the Origin of Testing", year=2026, sources=["crossref"])
     b = Publication(

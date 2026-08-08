@@ -29,6 +29,17 @@ def publication_key(pub: Publication) -> str | None:
     return None
 
 
+def _authors_compatible(a: Publication, b: Publication) -> bool:
+    """True unless both list authors and none of their surnames overlap."""
+    from snaffle.matching import parse_name
+
+    if not a.authors or not b.authors:
+        return True
+    surnames_a = {parse_name(x).surname for x in a.authors}
+    surnames_b = {parse_name(x).surname for x in b.authors}
+    return bool(surnames_a & surnames_b)
+
+
 def are_duplicates(a: Publication, b: Publication) -> bool:
     """True if two publications describe the same work despite metadata drift."""
     ka, kb = publication_key(a), publication_key(b)
@@ -37,8 +48,17 @@ def are_duplicates(a: Publication, b: Publication) -> bool:
     # Fall back to fuzzy title match, constrained by year when both known.
     if a.year and b.year and a.year != b.year:
         return False
-    score = fuzz.token_sort_ratio(normalize_title(a.title), normalize_title(b.title))
-    return score >= 90
+    na, nb = normalize_title(a.title), normalize_title(b.title)
+    if fuzz.token_sort_ratio(na, nb) >= 90:
+        return True
+    # Subtitle case: one title is essentially contained in the other (e.g. the
+    # same book with and without its subtitle). Guard against merging on a short
+    # generic opening phrase by requiring a substantial shared portion and
+    # compatible authorship.
+    shorter, longer = sorted((na, nb), key=len)
+    if len(shorter) >= 20 and fuzz.partial_ratio(shorter, longer) >= 95:
+        return _authors_compatible(a, b)
+    return False
 
 
 def _richer(a, b):
