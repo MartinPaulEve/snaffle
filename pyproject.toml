@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 browser = [
-    "selenium>=4.20",
+    "selenium>=4.20",  # drives Chrome; Selenium Manager fetches chromedriver
 ]
 
 [project.scripts]

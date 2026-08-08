@@ -137,8 +137,40 @@ def _exclusions(env, cli_exclude) -> list[str]:
     return list(dict.fromkeys(terms))
 
 
+def _institutional_login(ctx, institution: str, logger):
+    """Open a browser for manual institutional login, then wire the harvester.
+
+    The user signs in and approves any push in the visible window; once the
+    EZProxy session cookie appears, paywalled works are downloaded through it.
+    """
+    from snaffle.services.browser import BrowserService
+    from snaffle.services.ezproxy import build_proxied_url
+    from snaffle.services.institutional import InstitutionalHarvester
+
+    cred = next(
+        (c for c in ctx.credentials if c.institution.upper() == institution.upper()), None
+    )
+    if not cred or not cred.ezproxy_base:
+        raise click.UsageError(
+            f"No EZProxy base configured for institution '{institution}' "
+            "(set SNAFFLE_CRED_<INST>_EZPROXY)."
+        )
+    service = BrowserService(headless=False)
+    session = service.session()
+    # Navigate to a proxied publisher so EZProxy sends the user to institutional login.
+    session.get(build_proxied_url("https://www.tandfonline.com", cred.ezproxy_base))
+    logger.info(
+        "A browser window has opened. Log into %s and approve any push; waiting…", institution
+    )
+    ezproxy_host = cred.ezproxy_base.split("//", 1)[-1].split("/", 1)[0].split(".", 1)[-1]
+    if not session.wait_for_cookie(ezproxy_host.split(".")[0], timeout=300):
+        logger.warning("did not detect a completed login within 5 minutes; continuing anyway")
+    ctx.institutional = InstitutionalHarvester(session, ctx.http, cred.ezproxy_base)
+    return service
+
+
 def _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
-                  do_search, do_download):
+                  do_search, do_download, institution=None):
     from snaffle import manifest, pipeline
 
     env = _environment()
@@ -147,6 +179,10 @@ def _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
     logger = _configure_logging()
     out = Path(output)
     exclude_terms = _exclusions(env, exclude)
+
+    browser_service = None
+    if institution and do_download:
+        browser_service = _institutional_login(ctx, institution, logger)
 
     # For download-only, read the saved list before any --nuke wipes it.
     saved = None
@@ -179,6 +215,9 @@ def _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
         # Restore the manifest so the list survives a --nuke.
         manifest.write_manifest(out, academic, saved)
 
+    if browser_service is not None:
+        browser_service.close()
+
     logger.info(
         "done: %d found, %d downloaded, %d failed",
         len(report.found),
@@ -200,9 +239,11 @@ _exclude_option = click.option(
 @click.option("--style", default="chicago", help="Citation style for the bibliography.")
 @click.option("--orcid", default=None, help="Override the discovered ORCID iD.")
 @_exclude_option
-def run(academic, output, only, disable, nuke, style, orcid, exclude):
+@click.option("--institution", default=None,
+              help="Log in to this institution in a browser to fetch paywalled PDFs.")
+def run(academic, output, only, disable, nuke, style, orcid, exclude, institution):
     _run_activity(academic, output, only, disable, nuke, style, orcid, exclude,
-                  do_search=True, do_download=True)
+                  do_search=True, do_download=True, institution=institution)
 
 
 @main.command(help="Only build the publication list (writes the bibliography; no downloads).")
@@ -215,11 +256,19 @@ def search(academic, output, only, disable, nuke, style, orcid, exclude):
                   do_search=True, do_download=False)
 
 
+_institution_option = click.option(
+    "--institution",
+    default=None,
+    help="Log in to this institution (by name) in a browser to fetch paywalled PDFs.",
+)
+
+
 @main.command(help="Only download full text for a list built earlier by 'search'.")
 @_shared_options
-def download(academic, output, only, disable, nuke):
+@_institution_option
+def download(academic, output, only, disable, nuke, institution):
     _run_activity(academic, output, only, disable, nuke, style="chicago", orcid=None,
-                  exclude=(), do_search=False, do_download=True)
+                  exclude=(), do_search=False, do_download=True, institution=institution)
 
 
 @main.command(help="Remove already-saved works matching the exclusions (files + manifest).")
