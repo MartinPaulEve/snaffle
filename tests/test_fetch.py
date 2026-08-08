@@ -33,6 +33,31 @@ def test_fetch_follows_presigned_url_body():
     assert data == b"%PDF-1.4 real file"
 
 
+def test_fetch_encodes_unsafe_characters_in_url():
+    # OA URLs sometimes contain literal spaces (e.g. ".../FULL TEXT PDF.pdf").
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["raw"] = request.url.raw_path.decode()
+        return httpx.Response(200, content=b"%PDF-1.4 book")
+
+    data = fetch_document(_client(handler), "https://sup.org/files/FULL TEXT PDF.pdf")
+    assert data == b"%PDF-1.4 book"
+    assert "%20" in seen["raw"] and " " not in seen["raw"]
+
+
+def test_fetch_does_not_double_encode():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["raw"] = str(request.url)
+        return httpx.Response(200, content=b"%PDF-1.4")
+
+    fetch_document(_client(handler), "https://x/a%20b.pdf")
+    # An already-encoded %20 must not become %2520.
+    assert "%2520" not in seen["raw"]
+
+
 def test_fetch_none_on_error_status():
     assert fetch_document(_client(lambda r: httpx.Response(404)), "https://x/y") is None
 
