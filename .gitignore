@@ -1,0 +1,29 @@
+# Private plugins are never committed
+src/snaffle/plugins/private/
+
+# Secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Editors / tooling
+.claude/
+.idea/
+.vscode/
+docs/superpowers/
+
+# Output
+output/
